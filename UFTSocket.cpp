@@ -9,40 +9,60 @@
 #include "UFTSocket.hpp"
 
 #include <udt.h>
+
 #include <assert.h>
+#include <string.h>
 #include <iostream>
+#include <utime.h>
 #include <fstream>
+#include <mutex>
 
-typedef std::uint64_t UFTSocket_FileSize;
-typedef std::uint64_t UFTSocket_FileOffset;
+#include <sys/stat.h>
 
-struct UFTSocket_FileHeader
-{
-	UFTSocket_FileSize   Size;
-	UFTSocket_FileOffset Offset;
-	char                 Path[255];
-} __attribute__((__packed__));
+typedef std::uint64_t UFTSocket_FileTimestamp;
 
-inline void UFTSocket_WriteError(const char* message)
-{
-	std::cerr << message << std::endl;
-}
-
-inline void UFTSocket_WriteLastError(const char* function)
-{
-	std::cerr << "Error calling " << function << ": (" << UDT::getlasterror().getErrorCode() << ") " << UDT::getlasterror().getErrorMessage() << std::endl;
-}
+static constexpr std::uint64_t FILE_CHUNK_SIZE = 1048576; // 1mb
 
 struct UFTSocket::Context
 {
-	bool IsOpen = false;
-	bool IsBlocking = true;
-	bool IsConnected = false;
-	bool IsListening = false;
+	bool         IsOpen      = false;
+	bool         IsBlocking  = true;
+	bool         IsConnected = false;
+	bool         IsListening = false;
 
-	int Timeout = 15 * 1000;
+	std::int32_t Timeout     = 15 * 1000;
 	
-	UDTSOCKET Socket;
+	std::mutex   Mutex;
+
+	UDTSOCKET    Socket;
+};
+
+struct UFTSocket::FileInfo
+{
+	UFTSocket_FileSize      Size;
+	UFTSocket_FileTimestamp LastAccessed;
+	UFTSocket_FileTimestamp LastModified;
+};
+
+struct UFTSocket::FileState
+{
+	UFTSocket_FileSize      Size;
+	UFTSocket_FileTimestamp Timestamp;
+	char                    Path[255];
+} __attribute__((__packed__));
+
+struct UFTSocket::FileChunk
+{
+	std::uint8_t  Buffer[FILE_CHUNK_SIZE];
+	std::uint32_t BufferSize;
+} __attribute__((__packed__));
+
+enum class UFTSocket::ErrorCodes : std::uint8_t
+{
+	Success,
+
+	FileInfoFailed,
+	FileOpenFailed
 };
 
 UFTSocket::UFTSocket()
@@ -77,7 +97,7 @@ bool UFTSocket::IsListening() const
 	return lpContext->IsListening;
 }
 
-int UFTSocket::GetTimeout() const
+std::int32_t UFTSocket::GetTimeout() const
 {
 	return lpContext->Timeout;
 }
@@ -90,7 +110,7 @@ bool UFTSocket::Open()
 
 	if ((lpContext->Socket = UDT::socket(AF_INET, SOCK_STREAM, 0)) == UDT::INVALID_SOCK)
 	{
-		UFTSocket_WriteLastError("UDT::socket");
+		WriteLastError("UDT::socket");
 
 		UDT::cleanup();
 
@@ -133,14 +153,14 @@ bool UFTSocket::SetBlocking(bool set)
 	{
 		if (UDT::setsockopt(lpContext->Socket, 0, UDT_SNDSYN, &set, sizeof(bool)) == UDT::ERROR)
 		{
-			UFTSocket_WriteLastError("UDT::setsockopt");
+			WriteLastError("UDT::setsockopt");
 
 			return false;
 		}
 
 		if (UDT::setsockopt(lpContext->Socket, 0, UDT_RCVSYN, &set, sizeof(bool)) == UDT::ERROR)
 		{
-			UFTSocket_WriteLastError("UDT::setsockopt");
+			WriteLastError("UDT::setsockopt");
 
 			return false;
 		}
@@ -151,20 +171,20 @@ bool UFTSocket::SetBlocking(bool set)
 	return true;
 }
 
-bool UFTSocket::SetTimeout(int milliseconds)
+bool UFTSocket::SetTimeout(std::int32_t milliseconds)
 {
 	if (IsOpen())
 	{
-		if (UDT::setsockopt(lpContext->Socket, 0, UDT_SNDTIMEO, &milliseconds, sizeof(int)) == UDT::ERROR)
+		if (UDT::setsockopt(lpContext->Socket, 0, UDT_SNDTIMEO, &milliseconds, sizeof(std::int32_t)) == UDT::ERROR)
 		{
-			UFTSocket_WriteLastError("UDT::setsockopt");
+			WriteLastError("UDT::setsockopt");
 
 			return false;
 		}
 
-		if (UDT::setsockopt(lpContext->Socket, 0, UDT_RCVTIMEO, &milliseconds, sizeof(int)) == UDT::ERROR)
+		if (UDT::setsockopt(lpContext->Socket, 0, UDT_RCVTIMEO, &milliseconds, sizeof(std::int32_t)) == UDT::ERROR)
 		{
-			UFTSocket_WriteLastError("UDT::setsockopt");
+			WriteLastError("UDT::setsockopt");
 
 			return false;
 		}
@@ -175,7 +195,7 @@ bool UFTSocket::SetTimeout(int milliseconds)
 	return true;
 }
 
-bool UFTSocket::Listen(unsigned int host, unsigned short port, unsigned int backlog)
+bool UFTSocket::Listen(std::uint32_t host, std::uint16_t port, std::uint32_t backlog)
 {
 	assert(IsOpen());
 	assert(!IsConnected());
@@ -188,14 +208,14 @@ bool UFTSocket::Listen(unsigned int host, unsigned short port, unsigned int back
 
 	if (UDT::bind(lpContext->Socket, (const sockaddr*)&addr, sizeof(addr)) == UDT::ERROR)
 	{
-		UFTSocket_WriteLastError("UDT::bind");
+		WriteLastError("UDT::bind");
 
 		return false;
 	}
 
-	if (UDT::listen(lpContext->Socket, static_cast<int>(backlog)) == UDT::ERROR)
+	if (UDT::listen(lpContext->Socket, static_cast<std::int32_t>(backlog)) == UDT::ERROR)
 	{
-		UFTSocket_WriteLastError("UDT::listen");
+		WriteLastError("UDT::listen");
 
 		return false;
 	}
@@ -217,7 +237,7 @@ bool UFTSocket::Accept(UFTSocket& socket)
 		if (UDT::getlasterror().getErrorCode() != CUDTException::EASYNCRCV)
 		{
 
-			UFTSocket_WriteLastError("UDT::accept");
+			WriteLastError("UDT::accept");
 		}
 
 		return false;
@@ -237,7 +257,7 @@ bool UFTSocket::Accept(UFTSocket& socket)
 	return true;
 }
 
-bool UFTSocket::Connect(unsigned int remoteHost, unsigned short remotePort)
+bool UFTSocket::Connect(std::uint32_t remoteHost, std::uint16_t remotePort)
 {
 	assert(IsOpen());
 	assert(!IsConnected());
@@ -250,7 +270,7 @@ bool UFTSocket::Connect(unsigned int remoteHost, unsigned short remotePort)
 
 	if (UDT::connect(lpContext->Socket, (sockaddr*)&addr, sizeof(addr)) == UDT::ERROR)
 	{
-		UFTSocket_WriteLastError("UDT::connect");
+		WriteLastError("UDT::connect");
 
 		return false;
 	}
@@ -270,17 +290,598 @@ void UFTSocket::Disconnect()
 	}
 }
 
-// @return -1 if would block
-// @return number of bytes sent
+// @return file size in bytes
+// @return -2 on api error
 // @return 0 on connection closed
-int UFTSocket::Send(const void* lpBuffer, unsigned int size)
+std::int64_t UFTSocket::SendFile(const char* lpSource, const char* lpDestination, UFTSocket_OnSendProgress onProgress)
 {
 	assert(IsOpen());
 	assert(IsConnected());
 
-	int bytesSent;
+	std::lock_guard<std::mutex> lock(
+		lpContext->Mutex
+	);
 
-	if ((bytesSent = UDT::send(lpContext->Socket, (const char*)lpBuffer, (int)size, 0)) == UDT::ERROR)
+	FileInfo fileInfo;
+	
+	if (GetFileInfo(lpSource, fileInfo) == 0)
+	{
+		WriteError("Error getting FileInfo");
+
+		return -2;
+	}
+
+	FileState localFileState;
+	localFileState.Size = fileInfo.Size;
+	localFileState.Timestamp = fileInfo.LastModified;
+	snprintf(localFileState.Path, sizeof(FileState::Path), lpDestination);
+
+	if (SendAll(&localFileState, sizeof(FileState)) == 0)
+	{
+		WriteError("Error sending local FileState");
+
+		return 0;
+	}
+
+	{
+		ErrorCodes errorCode;
+
+		if (ReceiveAll(&errorCode, sizeof(ErrorCodes)) == 0)
+		{
+			WriteError("Error reading ErrorCodes");
+
+			return 0;
+		}
+
+		if (errorCode != ErrorCodes::Success)
+		{
+
+			return -2;
+		}
+	}
+
+	FileState remoteFileState;
+	
+	if (ReceiveAll(&remoteFileState, sizeof(FileState)) == 0)
+	{
+		WriteError("Error reading remote FileState");
+
+		return 0;
+	}
+
+	auto localChunkCount = GetChunkCount(localFileState.Size);
+//	std::cout << "Local chunk count: " << localChunkCount << std::endl;
+	auto remoteChunkCount = GetChunkCount(remoteFileState.Size);
+//	std::cout << "Remote chunk count: " << remoteChunkCount << std::endl;
+
+	{
+		ErrorCodes errorCode;
+
+		if (ReceiveAll(&errorCode, sizeof(ErrorCodes)) == 0)
+		{
+			WriteError("Error reading ErrorCodes");
+
+			return 0;
+		}
+
+		if (errorCode != ErrorCodes::Success)
+		{
+
+			return -2;
+		}
+	}
+
+	std::ifstream fStream(
+		lpSource,
+		std::ios::binary
+	);
+
+	{
+		auto errorCode = ErrorCodes::Success;
+
+		if (!fStream.is_open())
+		{
+
+			errorCode = ErrorCodes::FileOpenFailed;
+		}
+
+		if (SendAll(&errorCode, sizeof(ErrorCodes)) == 0)
+		{
+			WriteError("Error sending ErrorCodes");
+
+			return 0;
+		}
+
+		if (errorCode != ErrorCodes::Success)
+		{
+
+			return -2;
+		}
+	}
+
+//	std::cout << "Comparing local timestamp (" << localFileState.Timestamp << ") with remote (" << remoteFileState.Timestamp << ")" << std::endl;
+
+	if (localFileState.Timestamp == remoteFileState.Timestamp)
+	{
+		FileChunk localChunk;
+
+//		std::cout << "Verifying " << remoteChunkCount << " remote chunks" << std::endl;
+
+		for (std::uint32_t i = 0; i < remoteChunkCount; ++i)
+		{
+			fStream.seekg(
+				i * FILE_CHUNK_SIZE,
+				std::ios::beg
+			);
+
+			fStream.read(
+				reinterpret_cast<char*>(localChunk.Buffer),
+				FILE_CHUNK_SIZE
+			);
+
+			localChunk.BufferSize = fStream.gcount();
+
+			FileChunkChecksum localChecksum = 0;
+
+			for (std::uint32_t j = 0; j < localChunk.BufferSize; ++j)
+			{
+				localChecksum += localChunk.Buffer[j];
+			}
+
+			if (SendAll(&localChecksum, sizeof(FileChunkChecksum)) == 0)
+			{
+				WriteError("Error sending local FileChunkChecksum");
+
+				return 0;
+			}
+
+			FileChunkChecksum remoteChecksum;
+
+			if (ReceiveAll(&remoteChecksum, sizeof(FileChunkChecksum)) == 0)
+			{
+				WriteError("Error reading remote FileChunkChecksum");
+
+				return 0;
+			}
+
+//			std::cout << "Comparing local checksum (" << localChecksum << ") against remote (" << remoteChecksum << ")" << std::endl;
+
+			if (localChecksum != remoteChecksum)
+			{
+//				std::cout << "Resending chunk #" << i << std::endl;
+
+				if (SendAll(&localChunk, sizeof(FileChunk)) == 0)
+				{
+					WriteError("Error sending local FileChunk");
+
+					return 0;
+				}
+			}
+
+			onProgress(
+				(i * FILE_CHUNK_SIZE) + localChunk.BufferSize,
+				localFileState.Size
+			);
+		}
+
+//		std::cout << "Sending " << localChunkCount - remoteChunkCount << " local chunks" << std::endl;
+
+		for (std::uint32_t i = remoteChunkCount; i < localChunkCount; ++i)
+		{
+			fStream.seekg(
+				i * FILE_CHUNK_SIZE,
+				std::ios::beg
+			);
+
+			fStream.read(
+				reinterpret_cast<char*>(localChunk.Buffer),
+				FILE_CHUNK_SIZE
+			);
+
+			localChunk.BufferSize = fStream.gcount();
+
+//			std::cout << "Sending " << localChunk.BufferSize << " bytes" << std::endl;
+
+			if (SendAll(&localChunk, sizeof(FileChunk)) == 0)
+			{
+				WriteError("Error sending local FileChunk");
+
+				return 0;
+			}
+
+			onProgress(
+				(i * FILE_CHUNK_SIZE) + localChunk.BufferSize,
+				localFileState.Size
+			);
+		}
+	}
+	else
+	{
+		FileChunk localChunk;
+
+//		std::cout << "Sending " << localChunkCount << " local chunks" << std::endl;
+
+		for (std::uint32_t i = 0; i < localChunkCount; ++i)
+		{
+			fStream.seekg(
+				i * FILE_CHUNK_SIZE,
+				std::ios::beg
+			);
+
+			fStream.read(
+				reinterpret_cast<char*>(localChunk.Buffer),
+				FILE_CHUNK_SIZE
+			);
+
+			localChunk.BufferSize = fStream.gcount();
+
+//			std::cout << "Sending " << localChunk.BufferSize << " bytes" << std::endl;
+
+			if (SendAll(&localChunk, sizeof(FileChunk)) == 0)
+			{
+				WriteError("Error sending local FileChunk");
+
+				return 0;
+			}
+
+			onProgress(
+				(i * FILE_CHUNK_SIZE) + localChunk.BufferSize,
+				localFileState.Size
+			);
+		}
+	}
+
+	return static_cast<std::int64_t>(
+		localFileState.Size
+	);
+}
+
+// @return file size in bytes
+// @return -1 if would block
+// @return -2 on api error
+// @return 0 on connection closed
+std::int64_t UFTSocket::ReceiveFile(char(&path)[255], UFTSocket_OnReceiveProgress onProgress)
+{
+	assert(IsOpen());
+	assert(IsConnected());
+
+	std::lock_guard<std::mutex> lock(
+		lpContext->Mutex
+	);
+
+	FileState remoteFileState;
+
+	switch (TryReceiveAll(&remoteFileState, sizeof(FileState)))
+	{
+		case 0: return 0;
+		case -1: return -1;
+	}
+
+	FileInfo fileInfo;
+	
+	if (GetFileInfo(remoteFileState.Path, fileInfo) == 0)
+	{
+		WriteError("Error getting local FileInfo");
+
+		auto errorCode = ErrorCodes::FileInfoFailed;
+
+		if (SendAll(&errorCode, sizeof(ErrorCodes)) == 0)
+		{
+			WriteError("Error sending ErrorCodes");
+
+			return 0;
+		}
+
+		return -2;
+	}
+
+	{
+		auto errorCode = ErrorCodes::Success;
+
+		if (SendAll(&errorCode, sizeof(ErrorCodes)) == 0)
+		{
+			WriteError("Error sending ErrorCodes");
+
+			return 0;
+		}
+	}
+
+	FileState localFileState;
+	localFileState.Size = fileInfo.Size;
+	localFileState.Timestamp = fileInfo.LastModified;
+	snprintf(localFileState.Path, sizeof(FileState::Path), remoteFileState.Path);
+
+	if (SendAll(&localFileState, sizeof(FileState)) == 0)
+	{
+		WriteError("Error sending local FileState");
+
+		return 0;
+	}
+
+	auto localChunkCount = GetChunkCount(localFileState.Size);
+//	std::cout << "Local chunk count: " << localChunkCount << std::endl;
+	auto remoteChunkCount = GetChunkCount(remoteFileState.Size);
+//	std::cout << "Remote chunk count: " << remoteChunkCount << std::endl;
+
+//	std::cout << "Comparing local timestamp (" << localFileState.Timestamp << ") with remote (" << remoteFileState.Timestamp << ")" << std::endl;
+
+	auto SyncFileModificationTime = [&fileInfo, &localFileState, &remoteFileState]()
+	{
+		fileInfo.LastModified = remoteFileState.Timestamp;
+
+		if (!SetFileModificationTime(localFileState.Path, fileInfo))
+		{
+			WriteError("Error syncing file modification time");
+
+			return false;
+		}
+
+		return true;
+	};
+
+	if (localFileState.Timestamp == remoteFileState.Timestamp)
+	{
+		std::fstream fStream(
+			localFileState.Path,
+			std::ios::in | std::ios::out | std::ios::binary | std::ios::ate
+		);
+
+		{
+			auto errorCode = ErrorCodes::Success;
+
+			if (!fStream.is_open())
+			{
+
+				errorCode = ErrorCodes::FileOpenFailed;
+			}
+
+			if (SendAll(&errorCode, sizeof(ErrorCodes)) == 0)
+			{
+				WriteError("Error sending ErrorCodes");
+
+				return 0;
+			}
+
+			if (errorCode != ErrorCodes::Success)
+			{
+
+				return -2;
+			}
+		}
+
+		{
+			ErrorCodes errorCode;
+
+			if (ReceiveAll(&errorCode, sizeof(ErrorCodes)) == 0)
+			{
+				WriteError("Error reading ErrorCodes");
+
+				return 0;
+			}
+
+			if (errorCode != ErrorCodes::Success)
+			{
+
+				return -2;
+			}
+		}
+
+		FileChunk localChunk;
+		FileChunk remoteChunk;
+
+//		std::cout << "Verifying " << localChunkCount << " local chunks" << std::endl;
+
+		for (std::uint32_t i = 0; i < localChunkCount; ++i)
+		{
+			fStream.seekg(
+				i * FILE_CHUNK_SIZE,
+				std::ios::beg
+			);
+
+			fStream.read(
+				reinterpret_cast<char*>(localChunk.Buffer),
+				FILE_CHUNK_SIZE
+			);
+
+			localChunk.BufferSize = fStream.gcount();
+
+			FileChunkChecksum localChecksum = 0;
+
+			for (std::uint32_t j = 0; j < localChunk.BufferSize; ++j)
+			{
+				localChecksum += localChunk.Buffer[j];
+			}
+
+			FileChunkChecksum remoteChecksum;
+
+			if (ReceiveAll(&remoteChecksum, sizeof(FileChunkChecksum)) == 0)
+			{
+				WriteError("Error reading remote FileChunkChecksum");
+
+				fStream.close();
+				SyncFileModificationTime();
+
+				return 0;
+			}
+
+			if (SendAll(&localChecksum, sizeof(FileChunkChecksum)) == 0)
+			{
+				WriteError("Error sending local FileChunkChecksum");
+
+				fStream.close();
+				SyncFileModificationTime();
+
+				return 0;
+			}
+
+//			std::cout << "Comparing local checksum (" << localChecksum << ") against remote (" << remoteChecksum << ")" << std::endl;
+
+			if (localChecksum != remoteChecksum)
+			{
+//				std::cout << "Rewriting chunk #" << i << std::endl;
+
+				if (ReceiveAll(&remoteChunk, sizeof(FileChunk)) == 0)
+				{
+					WriteError("Error reading remote FileChunk");
+
+					fStream.close();
+					SyncFileModificationTime();
+
+					return 0;
+				}
+
+				fStream.seekp(
+					i * FILE_CHUNK_SIZE,
+					std::ios::beg
+				);
+
+				fStream.write(
+					reinterpret_cast<const char*>(remoteChunk.Buffer),
+					remoteChunk.BufferSize
+				);
+			}
+
+			onProgress(
+				(i * FILE_CHUNK_SIZE) + localChunk.BufferSize,
+				remoteFileState.Size
+			);
+		}
+
+		for (std::uint32_t i = localChunkCount; i < remoteChunkCount; ++i)
+		{
+			if (ReceiveAll(&remoteChunk, sizeof(FileChunk)) == 0)
+			{
+				WriteError("Error reading remote FileChunk");
+
+				fStream.close();
+				SyncFileModificationTime();
+
+				return 0;
+			}
+
+//			std::cout << "Writing " << remoteChunk.BufferSize << " bytes" << std::endl;
+
+			fStream.seekp(
+				i * FILE_CHUNK_SIZE,
+				std::ios::beg
+			);
+
+			fStream.write(
+				reinterpret_cast<const char*>(remoteChunk.Buffer),
+				remoteChunk.BufferSize
+			);
+
+			onProgress(
+				(i * FILE_CHUNK_SIZE) + remoteChunk.BufferSize,
+				remoteFileState.Size
+			);
+		}
+	}
+	else
+	{
+		std::ofstream fStream(
+			localFileState.Path,
+			std::ios::binary | std::ios::trunc
+		);
+
+		{
+			auto errorCode = ErrorCodes::Success;
+
+			if (!fStream.is_open())
+			{
+
+				errorCode = ErrorCodes::FileOpenFailed;
+			}
+
+			if (SendAll(&errorCode, sizeof(ErrorCodes)) == 0)
+			{
+				WriteError("Error sending ErrorCodes");
+
+				return 0;
+			}
+
+			if (errorCode != ErrorCodes::Success)
+			{
+
+				return -2;
+			}
+		}
+
+		{
+			ErrorCodes errorCode;
+
+			if (ReceiveAll(&errorCode, sizeof(ErrorCodes)) == 0)
+			{
+				WriteError("Error reading ErrorCodes");
+
+				return 0;
+			}
+
+			if (errorCode != ErrorCodes::Success)
+			{
+
+				return -2;
+			}
+		}
+
+		FileChunk remoteChunk;
+
+//		std::cout << "Reading " << remoteChunkCount << " remote chunks" << std::endl;
+
+		for (std::uint32_t i = 0; i < remoteChunkCount; ++i)
+		{
+			if (ReceiveAll(&remoteChunk, sizeof(FileChunk)) == 0)
+			{
+				WriteError("Error reading remote FileChunk");
+
+				fStream.close();
+				SyncFileModificationTime();
+
+				return 0;
+			}
+
+//			std::cout << "Writing " << remoteChunk.BufferSize << " bytes" << std::endl;
+
+			fStream.write(
+				reinterpret_cast<const char*>(remoteChunk.Buffer),
+				remoteChunk.BufferSize
+			);
+
+			onProgress(
+				(i * FILE_CHUNK_SIZE) + remoteChunk.BufferSize,
+				remoteFileState.Size
+			);
+		}
+	}
+
+	if (!SyncFileModificationTime())
+	{
+
+		return -2;
+	}
+
+	snprintf(
+		path,
+		sizeof(path),
+		localFileState.Path
+	);
+
+	return static_cast<std::int64_t>(
+		remoteFileState.Size
+	);
+}
+
+// @return number of bytes sent
+// @return -1 if would block
+// @return 0 on connection closed
+std::int32_t UFTSocket::Send(const void* lpBuffer, std::uint32_t size)
+{
+	assert(IsOpen());
+	assert(IsConnected());
+
+	std::int32_t bytesSent;
+
+	if ((bytesSent = UDT::send(lpContext->Socket, (const char*)lpBuffer, (std::int32_t)size, 0)) == UDT::ERROR)
 	{
 		if (UDT::getlasterror().getErrorCode() == CUDTException::EASYNCSND)
 		{
@@ -288,9 +889,10 @@ int UFTSocket::Send(const void* lpBuffer, unsigned int size)
 			return -1;
 		}
 
-		UFTSocket_WriteLastError("UDT::send");
+		WriteLastError("UDT::send");
 
 		Disconnect();
+		Close();
 
 		return 0;
 	}
@@ -298,17 +900,17 @@ int UFTSocket::Send(const void* lpBuffer, unsigned int size)
 	return bytesSent;
 }
 
-// @return -1 if would block
 // @return number of bytes read
+// @return -1 if would block
 // @return 0 on connection closed
-int UFTSocket::Receive(void* lpBuffer, unsigned int size)
+std::int32_t UFTSocket::Receive(void* lpBuffer, std::uint32_t size)
 {
 	assert(IsOpen());
 	assert(IsConnected());
 
-	int bytesReceived;
+	std::int32_t bytesReceived;
 
-	if ((bytesReceived = UDT::recv(lpContext->Socket, (char*)lpBuffer, (int)size, 0)) == UDT::ERROR)
+	if ((bytesReceived = UDT::recv(lpContext->Socket, (char*)lpBuffer, (std::int32_t)size, 0)) == UDT::ERROR)
 	{
 		if (UDT::getlasterror().getErrorCode() == CUDTException::EASYNCSND)
 		{
@@ -317,6 +919,7 @@ int UFTSocket::Receive(void* lpBuffer, unsigned int size)
 		}
 
 		Disconnect();
+		Close();
 
 		return 0;
 	}
@@ -324,66 +927,68 @@ int UFTSocket::Receive(void* lpBuffer, unsigned int size)
 	return bytesReceived;
 }
 
-bool UFTSocket::SendFile(const char* lpSource, const char* lpDestination)
+std::uint32_t UFTSocket::GetChunkCount(UFTSocket_FileSize fileSize)
 {
-	assert(IsOpen());
-	assert(IsConnected());
+	std::uint32_t count = 0;
 
-	std::fstream fStream(
-		lpSource,
-		std::ios::in | std::ios::binary
-	);
-
-	if (!fStream.is_open())
+	if (fileSize)
 	{
-		UFTSocket_WriteError("Source file not found");
+		count = fileSize / FILE_CHUNK_SIZE;
 
-		return false;
-	}
-
-	UFTSocket_FileHeader header = { 0 };
-	header.Offset = 0;
-
-	fStream.seekg(
-		0,
-		std::ios::end
-	);
-
-	header.Size = static_cast<UFTSocket_FileSize>(
-		fStream.tellg()
-	);
-
-	fStream.seekg(
-		0,
-		std::ios::beg
-	);
-
-	snprintf(
-		header.Path,
-		sizeof(header.Path) - 1,
-		lpDestination
-	);
-
-	if (!Send(&header, sizeof(header)))
-	{
-		UFTSocket_WriteError("Error sending UFTSocket_FileHeader");
-
-		return false;
-	}
-
-	int64_t fStreamOffset = static_cast<int64_t>(
-		header.Offset
-	);
-
-	if (UDT::sendfile(lpContext->Socket, fStream, fStreamOffset, static_cast<int64_t>(header.Size)) == UDT::ERROR)
-	{
-		UFTSocket_WriteLastError("UDT::sendfile");
-
-		if (UDT::getlasterror().getErrorCode() == CUDTException::ECONNLOST)
+		if (fileSize % FILE_CHUNK_SIZE)
 		{
 
-			Close();
+			++count;
 		}
+	}
+
+	return count;
+}
+
+// @return 0 on error
+// @return -1 if not found
+int UFTSocket::GetFileInfo(const char* path, FileInfo& info)
+{
+	struct stat64 stat;
+
+	if (stat64(path, &stat) == -1)
+	{
+		auto lastError = errno;
+
+		if ((lastError != ENOENT) && (lastError != ENOTDIR))
+		{
+			WriteLastErrorOS("stat64");
+
+			return 0;
+		}
+		
+		info.Size = 0;
+		info.LastAccessed = 0;
+		info.LastModified = 0;
+
+		return -1;
+	}
+
+	info.Size = static_cast<UFTSocket_FileSize>(stat.st_size);
+	info.LastAccessed = static_cast<UFTSocket_FileTimestamp>(stat.st_atime);
+	info.LastModified = static_cast<UFTSocket_FileTimestamp>(stat.st_mtime);
+
+	return 1;
+}
+
+bool UFTSocket::SetFileModificationTime(const char* path, const FileInfo& info)
+{
+	utimbuf times;
+	times.actime = static_cast<__time_t>(
+		info.LastAccessed
+	);
+	times.modtime = static_cast<__time_t>(
+		info.LastModified
+	);
+
+	if (utime(path, &times) == -1)
+	{
+		WriteLastErrorOS("utime");
 
 		return false;
 	}
@@ -391,120 +996,17 @@ bool UFTSocket::SendFile(const char* lpSource, const char* lpDestination)
 	return true;
 }
 
-bool UFTSocket::SendFileChunk(const char* lpSource, const char* lpDestination, long long index, long long size)
+void UFTSocket::WriteError(const char* message)
 {
-	assert(IsOpen());
-	assert(IsConnected());
-
-	std::fstream fStream(
-		lpSource,
-		std::ios::in | std::ios::binary
-	);
-
-	if (!fStream.is_open())
-	{
-		UFTSocket_WriteError("Source file not found");
-
-		return false;
-	}
-
-	fStream.seekg(
-		index
-	);
-
-	UFTSocket_FileHeader header = { 0 };
-	header.Size = static_cast<UFTSocket_FileSize>(
-		size
-	);
-	header.Offset = static_cast<UFTSocket_FileOffset>(
-		index
-	);
-
-	snprintf(
-		header.Path,
-		sizeof(header.Path) - 1,
-		lpDestination
-	);
-
-	if (!Send(&header, sizeof(header)))
-	{
-		UFTSocket_WriteError("Error sending UFTSocket_FileHeader");
-
-		return false;
-	}
-
-	int64_t fStreamOffset = static_cast<int64_t>(
-		header.Offset
-	);
-
-	if (UDT::sendfile(lpContext->Socket, fStream, fStreamOffset, static_cast<int64_t>(header.Size)) == UDT::ERROR)
-	{
-		UFTSocket_WriteLastError("UDT::sendfile");
-
-		if (UDT::getlasterror().getErrorCode() == CUDTException::ECONNLOST)
-		{
-
-			Close();
-		}
-
-		return false;
-	}
-
-	return true;
+	std::cerr << message << std::endl;
 }
 
-bool UFTSocket::ReceiveFile(std::string& path, std::uint64_t& offset, std::uint64_t& size)
+void UFTSocket::WriteLastError(const char* function)
 {
-	assert(IsOpen());
-	assert(IsConnected());
+	std::cerr << "Error calling " << function << ": (" << UDT::getlasterror().getErrorCode() << ") " << UDT::getlasterror().getErrorMessage() << std::endl;
+}
 
-	UFTSocket_FileHeader header;
-
-	int bytesReceived = 0;
-
-	while ((bytesReceived = Receive(&header, sizeof(header))) == -1)
-	{
-	}
-
-	if (bytesReceived == 0)
-	{
-		UFTSocket_WriteError("Error receiving UFTSocket_FileHeader");
-
-		return false;
-	}
-
-	std::fstream fStream(
-		header.Path,
-		std::ios::out | std::ios::app | std::ios::binary
-	);
-
-	fStream.seekp(
-		header.Offset
-	);
-
-	int64_t fStreamOffset = static_cast<int64_t>(
-		header.Offset
-	);
-
-	if (UDT::recvfile(lpContext->Socket, fStream, fStreamOffset, static_cast<int64_t>(header.Size)) == UDT::ERROR)
-	{
-		UFTSocket_WriteError("UDT::recvfile");
-
-		if (UDT::getlasterror().getErrorCode() == 2001)
-		{
-
-			Close();
-		}
-
-		return false;
-	}
-
-	path.assign(
-		header.Path
-	);
-
-	size = header.Size;
-	offset = header.Offset;
-
-	return true;
+void UFTSocket::WriteLastErrorOS(const char* function)
+{
+	std::cerr << "Error calling " << function << ": " << errno << std::endl;
 }

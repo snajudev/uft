@@ -9,11 +9,23 @@
 #ifndef UFTSOCKET_HPP
 #define UFTSOCKET_HPP
 
-#include <string>
+#include <cstdint>
+
+typedef std::uint64_t UFTSocket_FileSize;
+
+typedef void(*UFTSocket_OnSendProgress)(UFTSocket_FileSize bytesSent, UFTSocket_FileSize fileSize);
+
+typedef void(*UFTSocket_OnReceiveProgress)(UFTSocket_FileSize bytesReceived, UFTSocket_FileSize fileSize);
 
 class UFTSocket
 {
 	struct Context;
+	struct FileInfo;
+	struct FileState;
+	struct FileChunk;
+	typedef std::uint64_t FileChunkChecksum;
+
+	enum class ErrorCodes : std::uint8_t;
 
 	Context* const lpContext;
 
@@ -33,7 +45,7 @@ public:
 
 	bool IsListening() const;
 
-	int GetTimeout() const;
+	std::int32_t GetTimeout() const;
 
 	bool Open();
 
@@ -41,31 +53,176 @@ public:
 
 	bool SetBlocking(bool set);
 
-	bool SetTimeout(int milliseconds);
+	bool SetTimeout(std::int32_t milliseconds);
 
-	bool Listen(unsigned int host, unsigned short port, unsigned int backlog);
+	bool Listen(std::uint32_t host, std::uint16_t port, std::uint32_t backlog);
 
 	bool Accept(UFTSocket& socket);
 
-	bool Connect(unsigned int remoteHost, unsigned short remotePort);
+	bool Connect(std::uint32_t remoteHost, std::uint16_t remotePort);
 
 	void Disconnect();
 
+	// @return file size in bytes
+	// @return -2 on api error
+	// @return 0 on connection closed
+	std::int64_t SendFile(const char* lpSource, const char* lpDestination)
+	{
+		UFTSocket_OnSendProgress onProgress(
+			[](UFTSocket_FileSize _bytesSent, UFTSocket_FileSize _fileSize)
+			{
+			}
+		);
+
+		return SendFile(
+			lpSource,
+			lpDestination,
+			onProgress
+		);
+	}
+	// @return file size in bytes
+	// @return -2 on api error
+	// @return 0 on connection closed
+	std::int64_t SendFile(const char* lpSource, const char* lpDestination, UFTSocket_OnSendProgress onProgress);
+
+	// @return file size in bytes
 	// @return -1 if would block
+	// @return -2 on api error
+	// @return 0 on connection closed
+	std::int64_t ReceiveFile(char(&path)[255])
+	{
+		UFTSocket_OnReceiveProgress onProgress(
+			[](UFTSocket_FileSize _bytesReceived, UFTSocket_FileSize _fileSize)
+			{
+			}
+		);
+
+		return ReceiveFile(
+			path,
+			onProgress
+		);
+	}
+	// @return file size in bytes
+	// @return -1 if would block
+	// @return -2 on api error
+	// @return 0 on connection closed
+	std::int64_t ReceiveFile(char(&path)[255], UFTSocket_OnReceiveProgress onProgress);
+
+private:
+	// @return number of bytes sent
+	// @return -1 if would block
+	// @return 0 on connection closed
+	std::int32_t Send(const void* lpBuffer, std::uint32_t size);
+	
+	// @return number of bytes read
+	// @return -1 if would block
+	// @return 0 on connection closed
+	std::int32_t Receive(void* lpBuffer, std::uint32_t size);
+
 	// @return number of bytes sent
 	// @return 0 on connection closed
-	int Send(const void* lpBuffer, unsigned int size);
+	std::int32_t SendAll(const void* lpBuffer, std::uint32_t size)
+	{
+		for (std::uint32_t i = 0; i < size; )
+		{
+			std::int32_t bytesSent;
 
-	// @return -1 if would block
+			if ((bytesSent = Send(&((const char*)lpBuffer)[i], size - i)) == 0)
+			{
+
+				return 0;
+			}
+
+			if (bytesSent > 0)
+			{
+
+				i += bytesSent;
+			}
+		}
+
+		return static_cast<std::int32_t>(
+			size
+		);
+	}
+
 	// @return number of bytes read
 	// @return 0 on connection closed
-	int Receive(void* lpBuffer, unsigned int size);
+	std::int32_t ReceiveAll(void* lpBuffer, std::uint32_t size)
+	{
+		std::int32_t bytesRead;
 
-	bool SendFile(const char* lpSource, const char* lpDestination);
+		for (std::uint32_t i = 0; i < size; )
+		{
+			if ((bytesRead = Receive(&((char*)lpBuffer)[i], size - i)) == 0)
+			{
 
-	bool SendFileChunk(const char* lpSource, const char* lpDestination, long long index, long long size);
+				return 0;
+			}
 
-	bool ReceiveFile(std::string& path, std::uint64_t& offset, std::uint64_t& size);
+			if (bytesRead > 0)
+			{
+
+				i += bytesRead;
+			}
+		}
+
+		return static_cast<std::int32_t>(
+			size
+		);
+	}
+
+	// @return number of bytes read
+	// @return -1 if would block
+	// @return 0 on connection closed
+	std::int32_t TryReceiveAll(void* lpBuffer, std::uint32_t size)
+	{
+		std::int32_t bytesRead;
+
+		if ((bytesRead = Receive(lpBuffer, size)) == 0)
+		{
+
+			return 0;
+		}
+
+		if (bytesRead == -1)
+		{
+
+			return -1;
+		}
+
+		for (std::uint32_t i = bytesRead; i < size; )
+		{
+			if ((bytesRead = Receive(&((char*)lpBuffer)[i], size - i)) == 0)
+			{
+
+				return 0;
+			}
+
+			if (bytesRead > 0)
+			{
+
+				i += bytesRead;
+			}
+		}
+
+		return static_cast<std::int32_t>(
+			size
+		);
+	}
+
+	static std::uint32_t GetChunkCount(UFTSocket_FileSize fileSize);
+
+	// @return 0 on error
+	// @return -1 if not found
+	static int GetFileInfo(const char* path, FileInfo& info);
+
+	static bool SetFileModificationTime(const char* path, const FileInfo& info);
+
+	static void WriteError(const char* message);
+
+	static void WriteLastError(const char* function);
+
+	static void WriteLastErrorOS(const char* function);
 };
 
 #endif // !UFTSOCKET_HPP
