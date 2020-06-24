@@ -13,9 +13,9 @@
 
 typedef std::uint64_t UFTSocket_FileSize;
 
-typedef void(*UFTSocket_OnSendProgress)(UFTSocket_FileSize bytesSent, UFTSocket_FileSize fileSize);
+typedef void(*UFTSocket_OnSendProgress)(UFTSocket_FileSize bytesSent, UFTSocket_FileSize fileSize, void* lpParam);
 
-typedef void(*UFTSocket_OnReceiveProgress)(UFTSocket_FileSize bytesReceived, UFTSocket_FileSize fileSize);
+typedef void(*UFTSocket_OnReceiveProgress)(UFTSocket_FileSize bytesReceived, UFTSocket_FileSize fileSize, void* lpParam);
 
 class UFTSocket
 {
@@ -71,7 +71,7 @@ public:
 	std::int64_t SendFile(const char* lpSource, const char* lpDestination)
 	{
 		UFTSocket_OnSendProgress onProgress(
-			[](UFTSocket_FileSize _bytesSent, UFTSocket_FileSize _fileSize)
+			[](UFTSocket_FileSize _bytesSent, UFTSocket_FileSize _fileSize, void* _lpParam)
 			{
 			}
 		);
@@ -79,13 +79,14 @@ public:
 		return SendFile(
 			lpSource,
 			lpDestination,
-			onProgress
+			onProgress,
+			nullptr
 		);
 	}
 	// @return file size in bytes
 	// @return -2 on api error
 	// @return 0 on connection closed
-	std::int64_t SendFile(const char* lpSource, const char* lpDestination, UFTSocket_OnSendProgress onProgress);
+	std::int64_t SendFile(const char* lpSource, const char* lpDestination, UFTSocket_OnSendProgress onProgress, void* lpParam);
 
 	// @return file size in bytes
 	// @return -1 if would block
@@ -94,21 +95,22 @@ public:
 	std::int64_t ReceiveFile(char(&path)[255])
 	{
 		UFTSocket_OnReceiveProgress onProgress(
-			[](UFTSocket_FileSize _bytesReceived, UFTSocket_FileSize _fileSize)
+			[](UFTSocket_FileSize _bytesReceived, UFTSocket_FileSize _fileSize, void* _lpParam)
 			{
 			}
 		);
 
 		return ReceiveFile(
 			path,
-			onProgress
+			onProgress,
+			nullptr
 		);
 	}
 	// @return file size in bytes
 	// @return -1 if would block
 	// @return -2 on api error
 	// @return 0 on connection closed
-	std::int64_t ReceiveFile(char(&path)[255], UFTSocket_OnReceiveProgress onProgress);
+	std::int64_t ReceiveFile(char(&path)[255], UFTSocket_OnReceiveProgress onProgress, void* lpParam);
 
 private:
 	// @return number of bytes sent

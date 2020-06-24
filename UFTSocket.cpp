@@ -302,7 +302,7 @@ void UFTSocket::Disconnect()
 // @return file size in bytes
 // @return -2 on api error
 // @return 0 on connection closed
-std::int64_t UFTSocket::SendFile(const char* lpSource, const char* lpDestination, UFTSocket_OnSendProgress onProgress)
+std::int64_t UFTSocket::SendFile(const char* lpSource, const char* lpDestination, UFTSocket_OnSendProgress onProgress, void* lpParam)
 {
 	assert(IsOpen());
 	assert(IsConnected());
@@ -471,7 +471,8 @@ std::int64_t UFTSocket::SendFile(const char* lpSource, const char* lpDestination
 
 			onProgress(
 				(i * FILE_CHUNK_SIZE) + localChunk.BufferSize,
-				localFileState.Size
+				localFileState.Size,
+				lpParam
 			);
 		}
 
@@ -502,7 +503,8 @@ std::int64_t UFTSocket::SendFile(const char* lpSource, const char* lpDestination
 
 			onProgress(
 				(i * FILE_CHUNK_SIZE) + localChunk.BufferSize,
-				localFileState.Size
+				localFileState.Size,
+				lpParam
 			);
 		}
 	}
@@ -537,7 +539,8 @@ std::int64_t UFTSocket::SendFile(const char* lpSource, const char* lpDestination
 
 			onProgress(
 				(i * FILE_CHUNK_SIZE) + localChunk.BufferSize,
-				localFileState.Size
+				localFileState.Size,
+				lpParam
 			);
 		}
 	}
@@ -553,7 +556,7 @@ std::int64_t UFTSocket::SendFile(const char* lpSource, const char* lpDestination
 // @return -1 if would block
 // @return -2 on api error
 // @return 0 on connection closed
-std::int64_t UFTSocket::ReceiveFile(char(&path)[255], UFTSocket_OnReceiveProgress onProgress)
+std::int64_t UFTSocket::ReceiveFile(char(&path)[255], UFTSocket_OnReceiveProgress onProgress, void* lpParam)
 {
 	assert(IsOpen());
 	assert(IsConnected());
@@ -756,7 +759,8 @@ std::int64_t UFTSocket::ReceiveFile(char(&path)[255], UFTSocket_OnReceiveProgres
 
 			onProgress(
 				(i * FILE_CHUNK_SIZE) + localChunk.BufferSize,
-				remoteFileState.Size
+				remoteFileState.Size,
+				lpParam
 			);
 		}
 
@@ -786,7 +790,8 @@ std::int64_t UFTSocket::ReceiveFile(char(&path)[255], UFTSocket_OnReceiveProgres
 
 			onProgress(
 				(i * FILE_CHUNK_SIZE) + remoteChunk.BufferSize,
-				remoteFileState.Size
+				remoteFileState.Size,
+				lpParam
 			);
 		}
 	}
@@ -862,7 +867,8 @@ std::int64_t UFTSocket::ReceiveFile(char(&path)[255], UFTSocket_OnReceiveProgres
 
 			onProgress(
 				(i * FILE_CHUNK_SIZE) + remoteChunk.BufferSize,
-				remoteFileState.Size
+				remoteFileState.Size,
+				lpParam
 			);
 		}
 	}
