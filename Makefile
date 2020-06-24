@@ -6,7 +6,7 @@ JDK_ROOT_DIRECTORY ?= /usr/lib/jvm/adoptopenjdk-8-hotspot-armhf
 
 UDT_ROOT_DIRECTORY ?= ../udt/src
 
-all: socket server
+all: socket
 #all: socket server test
 
 test:
@@ -19,6 +19,6 @@ server:
 	$(CXX) -O3 -Wall -std=c++14 $(CPPFLAGS) -I$(UDT_ROOT_DIRECTORY) UFTSocket.cpp UFTServer.cpp $(LDFLAGS) $(LDLIBS) -lpthread -lz $(UDT_ROOT_DIRECTORY)/libudt.a -o UFTServer
 
 clean:
-	rm -f UFTServer
+#	rm -f UFTServer
 	rm -f libJUFTSocket.so
-	rm -f UFTTest
+#	rm -f UFTTest
