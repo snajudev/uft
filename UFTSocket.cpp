@@ -9,6 +9,7 @@
 #include "UFTSocket.hpp"
 
 #include <udt.h>
+#include <zlib.h>
 
 #include <assert.h>
 #include <string.h>
@@ -21,7 +22,9 @@
 
 typedef std::uint64_t UFTSocket_FileTimestamp;
 
-static constexpr std::uint64_t FILE_CHUNK_SIZE = 1048576; // 1mb
+static constexpr std::uint64_t FILE_CHUNK_SIZE = 256 * 1024; // 256kb
+static constexpr std::int32_t  COMPRESSION_LEVEL = Z_DEFAULT_COMPRESSION;
+static constexpr std::uint64_t COMPRESSED_FILE_CHUNK_SIZE = FILE_CHUNK_SIZE * 2;
 
 struct UFTSocket::Context
 {
@@ -55,6 +58,12 @@ struct UFTSocket::FileChunk
 {
 	std::uint8_t  Buffer[FILE_CHUNK_SIZE];
 	std::uint32_t BufferSize;
+} __attribute__((__packed__));
+
+struct UFTSocket::CompressedFileChunkHeader
+{
+	std::uint32_t Size;
+	std::uint32_t CompressedSize;
 } __attribute__((__packed__));
 
 enum class UFTSocket::ErrorCodes : std::uint8_t
@@ -401,6 +410,8 @@ std::int64_t UFTSocket::SendFile(const char* lpSource, const char* lpDestination
 
 //	std::cout << "Comparing local timestamp (" << localFileState.Timestamp << ") with remote (" << remoteFileState.Timestamp << ")" << std::endl;
 
+	std::int32_t bytesSavedFromCompression = 0;
+
 	if (localFileState.Timestamp == remoteFileState.Timestamp)
 	{
 		FileChunk localChunk;
@@ -450,7 +461,7 @@ std::int64_t UFTSocket::SendFile(const char* lpSource, const char* lpDestination
 			{
 //				std::cout << "Resending chunk #" << i << std::endl;
 
-				if (SendAll(&localChunk, sizeof(FileChunk)) == 0)
+				if (SendCompressedChunk(localChunk, bytesSavedFromCompression) == 0)
 				{
 					WriteError("Error sending local FileChunk");
 
@@ -517,7 +528,7 @@ std::int64_t UFTSocket::SendFile(const char* lpSource, const char* lpDestination
 
 //			std::cout << "Sending " << localChunk.BufferSize << " bytes" << std::endl;
 
-			if (SendAll(&localChunk, sizeof(FileChunk)) == 0)
+			if (SendCompressedChunk(localChunk, bytesSavedFromCompression) == 0)
 			{
 				WriteError("Error sending local FileChunk");
 
@@ -530,6 +541,8 @@ std::int64_t UFTSocket::SendFile(const char* lpSource, const char* lpDestination
 			);
 		}
 	}
+
+//	std::cout << "Saved " << bytesSavedFromCompression << " bytes with compression" << std::endl;
 
 	return static_cast<std::int64_t>(
 		localFileState.Size
@@ -720,7 +733,7 @@ std::int64_t UFTSocket::ReceiveFile(char(&path)[255], UFTSocket_OnReceiveProgres
 			{
 //				std::cout << "Rewriting chunk #" << i << std::endl;
 
-				if (ReceiveAll(&remoteChunk, sizeof(FileChunk)) == 0)
+				if (ReceiveCompressedChunk(remoteChunk) == 0)
 				{
 					WriteError("Error reading remote FileChunk");
 
@@ -749,7 +762,7 @@ std::int64_t UFTSocket::ReceiveFile(char(&path)[255], UFTSocket_OnReceiveProgres
 
 		for (std::uint32_t i = localChunkCount; i < remoteChunkCount; ++i)
 		{
-			if (ReceiveAll(&remoteChunk, sizeof(FileChunk)) == 0)
+			if (ReceiveCompressedChunk(remoteChunk) == 0)
 			{
 				WriteError("Error reading remote FileChunk");
 
@@ -830,7 +843,7 @@ std::int64_t UFTSocket::ReceiveFile(char(&path)[255], UFTSocket_OnReceiveProgres
 
 		for (std::uint32_t i = 0; i < remoteChunkCount; ++i)
 		{
-			if (ReceiveAll(&remoteChunk, sizeof(FileChunk)) == 0)
+			if (ReceiveCompressedChunk(remoteChunk) == 0)
 			{
 				WriteError("Error reading remote FileChunk");
 
@@ -925,6 +938,122 @@ std::int32_t UFTSocket::Receive(void* lpBuffer, std::uint32_t size)
 	}
 
 	return bytesReceived;
+}
+
+// @return number of bytes sent
+// @return 0 on connection closed
+std::uint32_t UFTSocket::SendCompressedChunk(const FileChunk& chunk, std::int32_t& bytesSaved)
+{
+	CompressedFileChunkHeader header = { 0 };
+	header.Size = chunk.BufferSize;
+	
+	std::uint8_t buffer[COMPRESSED_FILE_CHUNK_SIZE];
+
+	{
+		z_stream stream = { 0 };
+		deflateInit(&stream, COMPRESSION_LEVEL);
+
+		stream.next_in = const_cast<Bytef*>(
+			reinterpret_cast<const Bytef*>(
+				chunk.Buffer
+			)
+		);
+		stream.next_out = reinterpret_cast<Bytef*>(
+			buffer
+		);
+		stream.avail_in = static_cast<uInt>(
+			chunk.BufferSize
+		);
+		stream.avail_out = static_cast<uInt>(
+			COMPRESSED_FILE_CHUNK_SIZE
+		);
+
+		deflate(&stream, Z_FINISH);
+
+		header.CompressedSize = stream.total_out;
+
+		deflateEnd(&stream);
+	}
+
+	std::uint32_t bytesSent;
+	std::uint32_t totalBytesSent = 0;
+
+	if ((bytesSent = SendAll(&header, sizeof(CompressedFileChunkHeader))) == 0)
+	{
+		WriteError("Error sending CompressedFileChunkHeader");
+
+		return 0;
+	}
+
+	totalBytesSent += bytesSent;
+
+	if ((bytesSent = SendAll(buffer, header.CompressedSize)) == 0)
+	{
+		WriteError("Error sending compressed FileChunk");
+
+		return 0;
+	}
+
+	totalBytesSent += bytesSent;
+
+	bytesSaved += (chunk.BufferSize - header.CompressedSize);
+
+	return totalBytesSent;
+}
+
+// @return number of bytes read
+// @return 0 on connection closed
+std::uint32_t UFTSocket::ReceiveCompressedChunk(FileChunk& chunk)
+{
+	std::uint32_t bytesRead;
+	std::uint32_t totalBytesRead = 0;
+
+	CompressedFileChunkHeader header;
+
+	if ((bytesRead = ReceiveAll(&header, sizeof(CompressedFileChunkHeader))) == 0)
+	{
+		WriteError("Error reading CompressedFileChunkHeader");
+
+		return 0;
+	}
+
+	totalBytesRead += bytesRead;
+
+	std::uint8_t buffer[COMPRESSED_FILE_CHUNK_SIZE];
+
+	if ((bytesRead = ReceiveAll(buffer, header.CompressedSize)) == 0)
+	{
+		WriteError("Error reading compressed FileChunk");
+
+		return 0;
+	}
+
+	totalBytesRead += bytesRead;
+
+	chunk.BufferSize = header.Size;
+
+	{
+		z_stream stream = { 0 };
+		inflateInit(&stream);
+
+		stream.next_in = reinterpret_cast<Bytef*>(
+			buffer
+		);
+		stream.next_out = reinterpret_cast<Bytef*>(
+			chunk.Buffer
+		);
+		stream.avail_in = static_cast<uInt>(
+			header.CompressedSize
+		);
+		stream.avail_out = static_cast<uInt>(
+			header.Size
+		);
+		
+		inflate(&stream, Z_FINISH);
+		inflateEnd(&stream);
+	}
+	
+	return totalBytesRead;
 }
 
 std::uint32_t UFTSocket::GetChunkCount(UFTSocket_FileSize fileSize)

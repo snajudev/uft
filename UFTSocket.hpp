@@ -25,6 +25,8 @@ class UFTSocket
 	struct FileChunk;
 	typedef std::uint64_t FileChunkChecksum;
 
+	struct CompressedFileChunkHeader;
+	
 	enum class ErrorCodes : std::uint8_t;
 
 	Context* const lpContext;
@@ -209,6 +211,14 @@ private:
 			size
 		);
 	}
+
+	// @return number of bytes sent
+	// @return 0 on connection closed
+	std::uint32_t SendCompressedChunk(const FileChunk& chunk, std::int32_t& bytesSaved);
+
+	// @return number of bytes read
+	// @return 0 on connection closed
+	std::uint32_t ReceiveCompressedChunk(FileChunk& chunk);
 
 	static std::uint32_t GetChunkCount(UFTSocket_FileSize fileSize);
 
