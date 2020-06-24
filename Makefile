@@ -1,13 +1,13 @@
 CXX                ?= g++
 
-#JDK_ROOT_DIRECTORY ?= /usr/lib/jvm/adoptopenjdk-8-hotspot-armhf
-JDK_ROOT_DIRECTORY ?= /usr/lib/jvm/adoptopenjdk-8-hotspot-amd64
+JDK_ROOT_DIRECTORY ?= /usr/lib/jvm/adoptopenjdk-8-hotspot-armhf
+#JDK_ROOT_DIRECTORY ?= /usr/lib/jvm/adoptopenjdk-8-hotspot-amd64
 #JDK_ROOT_DIRECTORY ?= /usr/lib/jvm/java-8-openjdk-amd64
 
 UDT_ROOT_DIRECTORY ?= ../udt/src
 
-#all: socket server
-all: socket server test
+all: socket server
+#all: socket server test
 
 test:
 	$(CXX) -O3 -Wall -std=c++14 $(CPPFLAGS) -I$(UDT_ROOT_DIRECTORY) UFTSocket.cpp UFTTest.cpp $(LDFLAGS) $(LDLIBS) $(UDT_ROOT_DIRECTORY)/libudt.a -lpthread -lz -o UFTTest
