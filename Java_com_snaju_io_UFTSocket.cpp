@@ -448,12 +448,19 @@ extern "C" JNIEXPORT jlong Java_com_snaju_io_UFTSocket_receiveFile(JNIEnv* lpJNI
 				"(Ljava/lang/String;)Ljava/lang/StringBuffer;"
 			);
 
+			auto jString = lpJNI->NewStringUTF(
+				_path
+			);
+
 			lpJNI->CallVoidMethod(
 				path,
 				jMethodId,
-				lpJNI->NewStringUTF(
-					_path
-				)
+				jString
+			);
+
+			lpJNI->ReleaseStringUTFChars(
+				jString,
+				_path
 			);
 		}
 
