@@ -228,8 +228,6 @@ private:
 	// @return -1 if not found
 	static int GetFileInfo(const char* path, FileInfo& info);
 
-	static bool SetFileModificationTime(const char* path, const FileInfo& info);
-
 	static void WriteError(const char* message);
 
 	static void WriteLastError(const char* function);

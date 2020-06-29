@@ -14,7 +14,6 @@
 #include <assert.h>
 #include <string.h>
 #include <iostream>
-#include <utime.h>
 #include <fstream>
 #include <mutex>
 
@@ -631,20 +630,6 @@ std::int64_t UFTSocket::ReceiveFile(char(&path)[255], UFTSocket_OnReceiveProgres
 	auto remoteChunkCount = GetChunkCount(remoteFileState.Size);
 //	std::cout << "Remote chunk count: " << remoteChunkCount << std::endl;
 
-	auto SyncFileModificationTime = [&fileInfo, &localFileState, &remoteFileState]()
-	{
-		fileInfo.LastModified = remoteFileState.Timestamp;
-
-		if (!SetFileModificationTime(localFileState.Path, fileInfo))
-		{
-			WriteError("Error syncing file modification time");
-
-			return false;
-		}
-
-		return true;
-	};
-
 	if ((fileInfoStatus != -1) && (localFileState.Size <= remoteFileState.Size))
 	{
 		std::fstream fStream(
@@ -728,7 +713,6 @@ std::int64_t UFTSocket::ReceiveFile(char(&path)[255], UFTSocket_OnReceiveProgres
 				WriteError("Error reading remote FileChunkHash");
 
 				fStream.close();
-				SyncFileModificationTime();
 
 				return 0;
 			}
@@ -738,7 +722,6 @@ std::int64_t UFTSocket::ReceiveFile(char(&path)[255], UFTSocket_OnReceiveProgres
 				WriteError("Error sending local FileChunkHash");
 
 				fStream.close();
-				SyncFileModificationTime();
 
 				return 0;
 			}
@@ -754,7 +737,6 @@ std::int64_t UFTSocket::ReceiveFile(char(&path)[255], UFTSocket_OnReceiveProgres
 					WriteError("Error reading remote FileChunk");
 
 					fStream.close();
-					SyncFileModificationTime();
 
 					return 0;
 				}
@@ -786,7 +768,6 @@ std::int64_t UFTSocket::ReceiveFile(char(&path)[255], UFTSocket_OnReceiveProgres
 				WriteError("Error reading remote FileChunk");
 
 				fStream.close();
-				SyncFileModificationTime();
 
 				return 0;
 			}
@@ -868,7 +849,6 @@ std::int64_t UFTSocket::ReceiveFile(char(&path)[255], UFTSocket_OnReceiveProgres
 				WriteError("Error reading remote FileChunk");
 
 				fStream.close();
-				SyncFileModificationTime();
 
 				return 0;
 			}
@@ -886,12 +866,6 @@ std::int64_t UFTSocket::ReceiveFile(char(&path)[255], UFTSocket_OnReceiveProgres
 				lpParam
 			);
 		}
-	}
-
-	if (!SyncFileModificationTime())
-	{
-
-		return -2;
 	}
 
 	snprintf(
@@ -1124,26 +1098,6 @@ int UFTSocket::GetFileInfo(const char* path, FileInfo& info)
 	info.LastModified = static_cast<UFTSocket_FileTimestamp>(stat.st_mtime);
 
 	return 1;
-}
-
-bool UFTSocket::SetFileModificationTime(const char* path, const FileInfo& info)
-{
-	utimbuf times;
-	times.actime = static_cast<__time_t>(
-		info.LastAccessed
-	);
-	times.modtime = static_cast<__time_t>(
-		info.LastModified
-	);
-
-	if (utime(path, &times) == -1)
-	{
-		WriteLastErrorOS("utime");
-
-		return false;
-	}
-
-	return true;
 }
 
 void UFTSocket::WriteError(const char* message)
