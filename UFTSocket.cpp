@@ -22,7 +22,7 @@
 
 typedef std::uint64_t UFTSocket_FileTimestamp;
 
-static constexpr std::uint64_t FILE_CHUNK_SIZE = 256 * 1024; // 256kb
+static constexpr std::uint64_t FILE_CHUNK_SIZE = 512 * 1024; // 512kb
 static constexpr std::int32_t  COMPRESSION_LEVEL = Z_DEFAULT_COMPRESSION;
 static constexpr std::uint64_t COMPRESSED_FILE_CHUNK_SIZE = FILE_CHUNK_SIZE * 2;
 
@@ -445,6 +445,11 @@ std::int64_t UFTSocket::SendFile(const char* lpSource, const char* lpDestination
 				localChunk.BufferSize
 			);
 
+//			for (size_t i = 0; i < localChunk.BufferSize; ++i)
+//				std::cout << (uint16_t)localChunk.Buffer[i] << ' ';
+
+//			std::cout << std::endl;
+
 			if (SendAll(&localChunkHash, sizeof(FileChunkHash)) == 0)
 			{
 				WriteError("Error sending local FileChunkHash");
@@ -465,7 +470,7 @@ std::int64_t UFTSocket::SendFile(const char* lpSource, const char* lpDestination
 
 			if (localChunkHash != remoteChunkHash)
 			{
-//				std::cout << "Resending chunk #" << i << std::endl;
+//				std::cout << "Resending chunk #" << i + 1 << std::endl;
 
 				if (SendCompressedChunk(localChunk, bytesSavedFromCompression) == 0)
 				{
@@ -711,6 +716,11 @@ std::int64_t UFTSocket::ReceiveFile(char(&path)[255], UFTSocket_OnReceiveProgres
 				localChunk.BufferSize
 			);
 
+//			for (size_t i = 0; i < localChunk.BufferSize; ++i)
+//				std::cout << (uint16_t)localChunk.Buffer[i] << ' ';
+
+//			std::cout << std::endl;
+
 			FileChunkHash remoteChunkHash;
 
 			if (ReceiveAll(&remoteChunkHash, sizeof(FileChunkHash)) == 0)
@@ -737,7 +747,7 @@ std::int64_t UFTSocket::ReceiveFile(char(&path)[255], UFTSocket_OnReceiveProgres
 
 			if (localChunkHash != remoteChunkHash)
 			{
-//				std::cout << "Rewriting chunk #" << i << std::endl;
+//				std::cout << "Rewriting chunk #" << i + 1 << std::endl;
 
 				if (ReceiveCompressedChunk(remoteChunk) == 0)
 				{
@@ -753,6 +763,8 @@ std::int64_t UFTSocket::ReceiveFile(char(&path)[255], UFTSocket_OnReceiveProgres
 					i * FILE_CHUNK_SIZE,
 					std::ios::beg
 				);
+
+//				std::cout << "Writing " << remoteChunk.BufferSize << " bytes to disk" << std::endl;
 
 				fStream.write(
 					reinterpret_cast<const char*>(remoteChunk.Buffer),
