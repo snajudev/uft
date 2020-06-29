@@ -236,17 +236,17 @@ private:
 
 	static void WriteLastErrorOS(const char* function);
 
-	static FileChunkHash CalculateHash(const void* lpBuffer, std::size_t size)
+	static FileChunkHash CalculateHash(const void* lpBuffer, std::uint32_t size)
 	{
 		static constexpr FileChunkHash FNV_1a_64_PRIME = 0x100000001B3;
 		static constexpr FileChunkHash FNV_1a_64_OFFSET = 0xCBF29CE484222325;
 
 		FileChunkHash hash = FNV_1a_64_OFFSET;
 
-		for (std::size_t i = 0; i < size; ++i)
+		for (std::uint32_t i = 0; i < size; ++i)
 		{
-			hash ^= *reinterpret_cast<const FileChunkHash*>(
-				reinterpret_cast<const std::uint8_t*>(lpBuffer) + i
+			hash ^= static_cast<FileChunkHash>(
+				*(reinterpret_cast<const std::uint8_t*>(lpBuffer) + i)
 			);
 
 			hash *= FNV_1a_64_PRIME;
