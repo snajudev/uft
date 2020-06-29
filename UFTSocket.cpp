@@ -312,10 +312,20 @@ std::int64_t UFTSocket::SendFile(const char* lpSource, const char* lpDestination
 	);
 
 	FileInfo fileInfo;
-	
-	if (GetFileInfo(lpSource, fileInfo) == 0)
+	int fileInfoStatus;
+
+	if ((fileInfoStatus = GetFileInfo(lpSource, fileInfo)) <= 0)
 	{
-		WriteError("Error getting FileInfo");
+		switch (fileInfoStatus)
+		{
+			case 0:
+				WriteError("Error getting FileInfo");
+				break;
+
+			case -1:
+				WriteError("File not found");
+				break;
+		}
 
 		return -2;
 	}
@@ -408,11 +418,9 @@ std::int64_t UFTSocket::SendFile(const char* lpSource, const char* lpDestination
 		}
 	}
 
-//	std::cout << "Comparing local timestamp (" << localFileState.Timestamp << ") with remote (" << remoteFileState.Timestamp << ")" << std::endl;
-
 	std::int32_t bytesSavedFromCompression = 0;
 
-	if (localFileState.Timestamp == remoteFileState.Timestamp)
+	if ((remoteFileState.Size != 0) && (localFileState.Size >= remoteFileState.Size))
 	{
 		FileChunk localChunk;
 
@@ -572,8 +580,9 @@ std::int64_t UFTSocket::ReceiveFile(char(&path)[255], UFTSocket_OnReceiveProgres
 	}
 
 	FileInfo fileInfo;
+	int fileInfoStatus;
 	
-	if (GetFileInfo(remoteFileState.Path, fileInfo) == 0)
+	if ((fileInfoStatus = GetFileInfo(remoteFileState.Path, fileInfo)) == 0)
 	{
 		WriteError("Error getting local FileInfo");
 
@@ -617,8 +626,6 @@ std::int64_t UFTSocket::ReceiveFile(char(&path)[255], UFTSocket_OnReceiveProgres
 	auto remoteChunkCount = GetChunkCount(remoteFileState.Size);
 //	std::cout << "Remote chunk count: " << remoteChunkCount << std::endl;
 
-//	std::cout << "Comparing local timestamp (" << localFileState.Timestamp << ") with remote (" << remoteFileState.Timestamp << ")" << std::endl;
-
 	auto SyncFileModificationTime = [&fileInfo, &localFileState, &remoteFileState]()
 	{
 		fileInfo.LastModified = remoteFileState.Timestamp;
@@ -633,7 +640,7 @@ std::int64_t UFTSocket::ReceiveFile(char(&path)[255], UFTSocket_OnReceiveProgres
 		return true;
 	};
 
-	if (localFileState.Timestamp == remoteFileState.Timestamp)
+	if ((fileInfoStatus != -1) && (localFileState.Size <= remoteFileState.Size))
 	{
 		std::fstream fStream(
 			localFileState.Path,
