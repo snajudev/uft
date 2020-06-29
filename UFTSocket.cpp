@@ -432,32 +432,30 @@ std::int64_t UFTSocket::SendFile(const char* lpSource, const char* lpDestination
 
 			localChunk.BufferSize = fStream.gcount();
 
-			FileChunkChecksum localChecksum = 0;
+			auto localChunkHash = CalculateHash(
+				localChunk.Buffer,
+				localChunk.BufferSize
+			);
 
-			for (std::uint32_t j = 0; j < localChunk.BufferSize; ++j)
+			if (SendAll(&localChunkHash, sizeof(FileChunkHash)) == 0)
 			{
-				localChecksum += localChunk.Buffer[j];
-			}
-
-			if (SendAll(&localChecksum, sizeof(FileChunkChecksum)) == 0)
-			{
-				WriteError("Error sending local FileChunkChecksum");
+				WriteError("Error sending local FileChunkHash");
 
 				return 0;
 			}
 
-			FileChunkChecksum remoteChecksum;
+			FileChunkHash remoteChunkHash;
 
-			if (ReceiveAll(&remoteChecksum, sizeof(FileChunkChecksum)) == 0)
+			if (ReceiveAll(&remoteChunkHash, sizeof(FileChunkHash)) == 0)
 			{
-				WriteError("Error reading remote FileChunkChecksum");
+				WriteError("Error reading remote FileChunkHash");
 
 				return 0;
 			}
 
-//			std::cout << "Comparing local checksum (" << localChecksum << ") against remote (" << remoteChecksum << ")" << std::endl;
+//			std::cout << "Comparing local chunk hash (" << localChunkHash << ") against remote (" << remoteChunkHash << ")" << std::endl;
 
-			if (localChecksum != remoteChecksum)
+			if (localChunkHash != remoteChunkHash)
 			{
 //				std::cout << "Resending chunk #" << i << std::endl;
 
@@ -701,18 +699,16 @@ std::int64_t UFTSocket::ReceiveFile(char(&path)[255], UFTSocket_OnReceiveProgres
 
 			localChunk.BufferSize = fStream.gcount();
 
-			FileChunkChecksum localChecksum = 0;
+			auto localChunkHash = CalculateHash(
+				localChunk.Buffer,
+				localChunk.BufferSize
+			);
 
-			for (std::uint32_t j = 0; j < localChunk.BufferSize; ++j)
+			FileChunkHash remoteChunkHash;
+
+			if (ReceiveAll(&remoteChunkHash, sizeof(FileChunkHash)) == 0)
 			{
-				localChecksum += localChunk.Buffer[j];
-			}
-
-			FileChunkChecksum remoteChecksum;
-
-			if (ReceiveAll(&remoteChecksum, sizeof(FileChunkChecksum)) == 0)
-			{
-				WriteError("Error reading remote FileChunkChecksum");
+				WriteError("Error reading remote FileChunkHash");
 
 				fStream.close();
 				SyncFileModificationTime();
@@ -720,9 +716,9 @@ std::int64_t UFTSocket::ReceiveFile(char(&path)[255], UFTSocket_OnReceiveProgres
 				return 0;
 			}
 
-			if (SendAll(&localChecksum, sizeof(FileChunkChecksum)) == 0)
+			if (SendAll(&localChunkHash, sizeof(FileChunkHash)) == 0)
 			{
-				WriteError("Error sending local FileChunkChecksum");
+				WriteError("Error sending local FileChunkHash");
 
 				fStream.close();
 				SyncFileModificationTime();
@@ -730,9 +726,9 @@ std::int64_t UFTSocket::ReceiveFile(char(&path)[255], UFTSocket_OnReceiveProgres
 				return 0;
 			}
 
-//			std::cout << "Comparing local checksum (" << localChecksum << ") against remote (" << remoteChecksum << ")" << std::endl;
+//			std::cout << "Comparing local chunk hash (" << localChunkHash << ") against remote (" << remoteChunkHash << ")" << std::endl;
 
-			if (localChecksum != remoteChecksum)
+			if (localChunkHash != remoteChunkHash)
 			{
 //				std::cout << "Rewriting chunk #" << i << std::endl;
 

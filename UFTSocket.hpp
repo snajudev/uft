@@ -23,7 +23,7 @@ class UFTSocket
 	struct FileInfo;
 	struct FileState;
 	struct FileChunk;
-	typedef std::uint64_t FileChunkChecksum;
+	typedef std::uint64_t FileChunkHash;
 
 	struct CompressedFileChunkHeader;
 	
@@ -235,6 +235,25 @@ private:
 	static void WriteLastError(const char* function);
 
 	static void WriteLastErrorOS(const char* function);
+
+	static FileChunkHash CalculateHash(const void* lpBuffer, std::size_t size)
+	{
+		static constexpr FileChunkHash FNV_1a_64_PRIME = 0x100000001B3;
+		static constexpr FileChunkHash FNV_1a_64_OFFSET = 0xCBF29CE484222325;
+
+		FileChunkHash hash = FNV_1a_64_OFFSET;
+
+		for (std::size_t i = 0; i < size; ++i)
+		{
+			hash ^= *reinterpret_cast<const FileChunkHash*>(
+				reinterpret_cast<const std::uint8_t*>(lpBuffer) + i
+			);
+
+			hash *= FNV_1a_64_PRIME;
+		}
+
+		return hash;
+	}
 };
 
 #endif // !UFTSOCKET_HPP
