@@ -1,6 +1,7 @@
 CXX                ?= g++
 
-JDK_ROOT_DIRECTORY ?= /usr/lib/jvm/adoptopenjdk-8-hotspot-armhf
+JDK_ROOT_DIRECTORY ?= /usr/lib/jvm/java-8-openjdk-armhf
+#JDK_ROOT_DIRECTORY ?= /usr/lib/jvm/adoptopenjdk-8-hotspot-armhf
 #JDK_ROOT_DIRECTORY ?= /usr/lib/jvm/adoptopenjdk-8-hotspot-amd64
 #JDK_ROOT_DIRECTORY ?= /usr/lib/jvm/java-8-openjdk-amd64
 
