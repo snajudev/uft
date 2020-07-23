@@ -7,6 +7,7 @@
 // -----------------------------------------------------------------------------
 
 #include "UFTSocket.hpp"
+#include "BitConverter.hpp"
 
 #include <udt.h>
 #include <zlib.h>
@@ -330,8 +331,8 @@ std::int64_t UFTSocket::SendFile(const char* lpSource, const char* lpDestination
 	}
 
 	FileState localFileState;
-	localFileState.Size = fileInfo.Size;
-	localFileState.Timestamp = fileInfo.LastModified;
+	localFileState.Size = BitConverter::HostToNetwork(fileInfo.Size);
+	localFileState.Timestamp = BitConverter::HostToNetwork(fileInfo.LastModified);
 	snprintf(localFileState.Path, sizeof(FileState::Path), lpDestination);
 
 	if (SendAll(&localFileState, sizeof(FileState)) == 0)
@@ -340,6 +341,9 @@ std::int64_t UFTSocket::SendFile(const char* lpSource, const char* lpDestination
 
 		return 0;
 	}
+
+	localFileState.Size = BitConverter::NetworkToHost(fileInfo.Size);
+	localFileState.Timestamp = BitConverter::NetworkToHost(fileInfo.LastModified);
 
 	{
 		ErrorCodes errorCode;
@@ -350,6 +354,10 @@ std::int64_t UFTSocket::SendFile(const char* lpSource, const char* lpDestination
 
 			return 0;
 		}
+
+		errorCode = BitConverter::NetworkToHost(
+			errorCode
+		);
 
 		if (errorCode != ErrorCodes::Success)
 		{
@@ -367,6 +375,9 @@ std::int64_t UFTSocket::SendFile(const char* lpSource, const char* lpDestination
 		return 0;
 	}
 
+	remoteFileState.Size = BitConverter::NetworkToHost(remoteFileState.Size);
+	remoteFileState.Timestamp = BitConverter::NetworkToHost(remoteFileState.Timestamp);
+
 	auto localChunkCount = GetChunkCount(localFileState.Size);
 //	std::cout << "Local chunk count: " << localChunkCount << std::endl;
 	auto remoteChunkCount = GetChunkCount(remoteFileState.Size);
@@ -381,6 +392,10 @@ std::int64_t UFTSocket::SendFile(const char* lpSource, const char* lpDestination
 
 			return 0;
 		}
+
+		errorCode = BitConverter::NetworkToHost(
+			errorCode
+		);
 
 		if (errorCode != ErrorCodes::Success)
 		{
@@ -403,12 +418,20 @@ std::int64_t UFTSocket::SendFile(const char* lpSource, const char* lpDestination
 			errorCode = ErrorCodes::FileOpenFailed;
 		}
 
+		errorCode = BitConverter::HostToNetwork(
+			errorCode
+		);
+
 		if (SendAll(&errorCode, sizeof(ErrorCodes)) == 0)
 		{
 			WriteError("Error sending ErrorCodes");
 
 			return 0;
 		}
+
+		errorCode = BitConverter::NetworkToHost(
+			errorCode
+		);
 
 		if (errorCode != ErrorCodes::Success)
 		{
@@ -449,6 +472,10 @@ std::int64_t UFTSocket::SendFile(const char* lpSource, const char* lpDestination
 
 //			std::cout << std::endl;
 
+			localChunkHash = BitConverter::HostToNetwork(
+				localChunkHash
+			);
+
 			if (SendAll(&localChunkHash, sizeof(FileChunkHash)) == 0)
 			{
 				WriteError("Error sending local FileChunkHash");
@@ -465,11 +492,20 @@ std::int64_t UFTSocket::SendFile(const char* lpSource, const char* lpDestination
 				return 0;
 			}
 
+			// if we don't flip remoteChunkHash here then we don't have to re-flip localChunkHash to compare
+//			remoteChunkHash = BitConverter::NetworkToHost(
+//				remoteChunkHash
+//			);
+
 //			std::cout << "Comparing local chunk hash (" << localChunkHash << ") against remote (" << remoteChunkHash << ")" << std::endl;
 
 			if (localChunkHash != remoteChunkHash)
 			{
 //				std::cout << "Resending chunk #" << i + 1 << std::endl;
+
+				localChunk.BufferSize = BitConverter::HostToNetwork(
+					localChunk.BufferSize
+				);
 
 				if (SendCompressedChunk(localChunk, bytesSavedFromCompression) == 0)
 				{
@@ -477,6 +513,10 @@ std::int64_t UFTSocket::SendFile(const char* lpSource, const char* lpDestination
 
 					return 0;
 				}
+
+				localChunk.BufferSize = BitConverter::NetworkToHost(
+					localChunk.BufferSize
+				);
 			}
 
 			onProgress(
@@ -503,6 +543,10 @@ std::int64_t UFTSocket::SendFile(const char* lpSource, const char* lpDestination
 			localChunk.BufferSize = fStream.gcount();
 
 //			std::cout << "Sending " << localChunk.BufferSize << " bytes" << std::endl;
+
+			localChunk.BufferSize = BitConverter::HostToNetwork(
+				localChunk.BufferSize
+			);
 
 			if (SendAll(&localChunk, sizeof(FileChunk)) == 0)
 			{
@@ -592,6 +636,10 @@ std::int64_t UFTSocket::ReceiveFile(char(&path)[255], UFTSocket_OnReceiveProgres
 
 		auto errorCode = ErrorCodes::FileInfoFailed;
 
+		errorCode = BitConverter::HostToNetwork(
+			errorCode
+		);
+
 		if (SendAll(&errorCode, sizeof(ErrorCodes)) == 0)
 		{
 			WriteError("Error sending ErrorCodes");
@@ -604,6 +652,10 @@ std::int64_t UFTSocket::ReceiveFile(char(&path)[255], UFTSocket_OnReceiveProgres
 
 	{
 		auto errorCode = ErrorCodes::Success;
+
+		errorCode = BitConverter::HostToNetwork(
+			errorCode
+		);
 
 		if (SendAll(&errorCode, sizeof(ErrorCodes)) == 0)
 		{
@@ -646,12 +698,20 @@ std::int64_t UFTSocket::ReceiveFile(char(&path)[255], UFTSocket_OnReceiveProgres
 				errorCode = ErrorCodes::FileOpenFailed;
 			}
 
+			errorCode = BitConverter::HostToNetwork(
+				errorCode
+			);
+
 			if (SendAll(&errorCode, sizeof(ErrorCodes)) == 0)
 			{
 				WriteError("Error sending ErrorCodes");
 
 				return 0;
 			}
+
+			errorCode = BitConverter::NetworkToHost(
+				errorCode
+			);
 
 			if (errorCode != ErrorCodes::Success)
 			{
@@ -669,6 +729,10 @@ std::int64_t UFTSocket::ReceiveFile(char(&path)[255], UFTSocket_OnReceiveProgres
 
 				return 0;
 			}
+
+			errorCode = BitConverter::NetworkToHost(
+				errorCode
+			);
 
 			if (errorCode != ErrorCodes::Success)
 			{
@@ -716,6 +780,10 @@ std::int64_t UFTSocket::ReceiveFile(char(&path)[255], UFTSocket_OnReceiveProgres
 
 				return 0;
 			}
+
+			localChunkHash = BitConverter::HostToNetwork(
+				localChunkHash
+			);
 
 			if (SendAll(&localChunkHash, sizeof(FileChunkHash)) == 0)
 			{
@@ -807,12 +875,20 @@ std::int64_t UFTSocket::ReceiveFile(char(&path)[255], UFTSocket_OnReceiveProgres
 				errorCode = ErrorCodes::FileOpenFailed;
 			}
 
+			errorCode = BitConverter::HostToNetwork(
+				errorCode
+			);
+
 			if (SendAll(&errorCode, sizeof(ErrorCodes)) == 0)
 			{
 				WriteError("Error sending ErrorCodes");
 
 				return 0;
 			}
+
+			errorCode = BitConverter::NetworkToHost(
+				errorCode
+			);
 
 			if (errorCode != ErrorCodes::Success)
 			{
@@ -830,6 +906,10 @@ std::int64_t UFTSocket::ReceiveFile(char(&path)[255], UFTSocket_OnReceiveProgres
 
 				return 0;
 			}
+
+			errorCode = BitConverter::NetworkToHost(
+				errorCode
+			);
 
 			if (errorCode != ErrorCodes::Success)
 			{
@@ -970,6 +1050,11 @@ std::uint32_t UFTSocket::SendCompressedChunk(const FileChunk& chunk, std::int32_
 		deflateEnd(&stream);
 	}
 
+	auto headerCompressedSize = header.CompressedSize;;
+
+	header.Size = BitConverter::HostToNetwork(header.Size);
+	header.CompressedSize = BitConverter::HostToNetwork(header.CompressedSize);
+
 	std::uint32_t bytesSent;
 	std::uint32_t totalBytesSent = 0;
 
@@ -982,7 +1067,7 @@ std::uint32_t UFTSocket::SendCompressedChunk(const FileChunk& chunk, std::int32_
 
 	totalBytesSent += bytesSent;
 
-	if ((bytesSent = SendAll(buffer, header.CompressedSize)) == 0)
+	if ((bytesSent = SendAll(buffer, headerCompressedSize)) == 0)
 	{
 		WriteError("Error sending compressed FileChunk");
 
@@ -991,7 +1076,7 @@ std::uint32_t UFTSocket::SendCompressedChunk(const FileChunk& chunk, std::int32_
 
 	totalBytesSent += bytesSent;
 
-	bytesSaved += (chunk.BufferSize - header.CompressedSize);
+	bytesSaved += (chunk.BufferSize - headerCompressedSize);
 
 	return totalBytesSent;
 }
@@ -1013,6 +1098,9 @@ std::uint32_t UFTSocket::ReceiveCompressedChunk(FileChunk& chunk)
 	}
 
 	totalBytesRead += bytesRead;
+
+	header.Size = BitConverter::NetworkToHost(header.Size);
+	header.CompressedSize = BitConverter::NetworkToHost(header.CompressedSize);
 
 	std::uint8_t buffer[COMPRESSED_FILE_CHUNK_SIZE];
 
