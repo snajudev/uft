@@ -7,7 +7,6 @@
 // -----------------------------------------------------------------------------
 
 #include <jni.h>
-#include <unordered_map>
 
 #include "UFTSocket.hpp"
 
