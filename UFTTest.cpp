@@ -1,10 +1,7 @@
 #include "UFTSocket.hpp"
 
 #include <chrono>
-#include <fstream>
 #include <iostream>
-
-#include <sys/stat.h>
 
 #define IP_ADDRESS(a, b, c, d)   ((a << 24) | (b << 16) | (c << 8) | d)
 #define IP_ADDRESS_TO_STREAM(ip) ((ip >> 24) & 0xFF) << '.' << ((ip >> 16) & 0xFF) << '.' << ((ip >> 8) & 0xFF) << '.' << (ip & 0xFF)
