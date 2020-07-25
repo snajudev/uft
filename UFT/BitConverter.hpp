@@ -1,7 +1,4 @@
 // -----------------------------------------------------------------------------
-// Program: Materials ISS Experiment (MISSE)
-// File: BitConverter.h
-// Purpose: Provides optional endian flips depending on host endianness
 // Written by: F. Barney
 // Date: 7/23/2020
 // -----------------------------------------------------------------------------
@@ -145,14 +142,9 @@ class BitConverter
 	BitConverter() = delete;
 
 public:
-	static constexpr bool IsBigEndian()
-	{
-		return (0xFFFFFFFF & 0x00000001) == 0x00000010;
-	}
-
 	static constexpr bool IsLittleEndian()
 	{
-		return (0xFFFFFFFF & 0x00000001) == 0x00000001;
+		return (0x00000001 & 0xFFFFFFFF) == 0x00000001;
 	}
 
 	template<typename T>

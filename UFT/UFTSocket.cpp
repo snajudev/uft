@@ -1,7 +1,4 @@
 // -----------------------------------------------------------------------------
-// Program: Materials ISS Experiment (MISSE)
-// File: UFTSocket.cpp
-// Purpose: Socket wrapper for UDT file and buffer IO
 // Written by: F. Barney
 // Date: 6/14/2020
 // -----------------------------------------------------------------------------
@@ -22,9 +19,9 @@
 
 typedef std::uint64_t UFTSocket_FileTimestamp;
 
-static constexpr std::uint64_t FILE_CHUNK_SIZE = 512 * 1024; // 512kb
-static constexpr std::int32_t  COMPRESSION_LEVEL = Z_DEFAULT_COMPRESSION;
-static constexpr std::uint64_t COMPRESSED_FILE_CHUNK_SIZE = FILE_CHUNK_SIZE * 2;
+constexpr std::uint64_t FILE_CHUNK_SIZE = 1024 * 1024; // 1MB
+constexpr std::int32_t  COMPRESSION_LEVEL = Z_DEFAULT_COMPRESSION;
+constexpr std::uint64_t COMPRESSED_FILE_CHUNK_SIZE = FILE_CHUNK_SIZE * 2;
 
 struct UFTSocket::Context
 {
@@ -342,8 +339,8 @@ std::int64_t UFTSocket::SendFile(const char* lpSource, const char* lpDestination
 		return 0;
 	}
 
-	localFileState.Size = BitConverter::NetworkToHost(fileInfo.Size);
-	localFileState.Timestamp = BitConverter::NetworkToHost(fileInfo.LastModified);
+	localFileState.Size = BitConverter::NetworkToHost(localFileState.Size);
+	localFileState.Timestamp = BitConverter::NetworkToHost(localFileState.Timestamp);
 
 	{
 		ErrorCodes errorCode;
@@ -439,6 +436,8 @@ std::int64_t UFTSocket::SendFile(const char* lpSource, const char* lpDestination
 			return -2;
 		}
 	}
+
+	std::uint8_t signal;
 
 	std::int32_t bytesSavedFromCompression = 0;
 
@@ -544,11 +543,7 @@ std::int64_t UFTSocket::SendFile(const char* lpSource, const char* lpDestination
 
 //			std::cout << "Sending " << localChunk.BufferSize << " bytes" << std::endl;
 
-			localChunk.BufferSize = BitConverter::HostToNetwork(
-				localChunk.BufferSize
-			);
-
-			if (SendAll(&localChunk, sizeof(FileChunk)) == 0)
+			if (SendCompressedChunk(localChunk, bytesSavedFromCompression) == 0)
 			{
 				WriteError("Error sending local FileChunk");
 
@@ -560,6 +555,13 @@ std::int64_t UFTSocket::SendFile(const char* lpSource, const char* lpDestination
 				localFileState.Size,
 				lpParam
 			);
+
+			if (ReceiveAll(&signal, 1) == 0)
+			{
+				WriteError("Error receiving signal");
+
+				return 0;
+			}
 		}
 	}
 	else
@@ -596,6 +598,13 @@ std::int64_t UFTSocket::SendFile(const char* lpSource, const char* lpDestination
 				localFileState.Size,
 				lpParam
 			);
+
+			if (ReceiveAll(&signal, 1) == 0)
+			{
+				WriteError("Error receiving signal");
+
+				return 0;
+			}
 		}
 	}
 
@@ -626,6 +635,9 @@ std::int64_t UFTSocket::ReceiveFile(char(&path)[255], UFTSocket_OnReceiveProgres
 		case 0: return 0;
 		case -1: return -1;
 	}
+
+	remoteFileState.Size = BitConverter::NetworkToHost(remoteFileState.Size);
+	remoteFileState.Timestamp = BitConverter::NetworkToHost(remoteFileState.Timestamp);
 
 	FileInfo fileInfo;
 	int fileInfoStatus;
@@ -666,8 +678,8 @@ std::int64_t UFTSocket::ReceiveFile(char(&path)[255], UFTSocket_OnReceiveProgres
 	}
 
 	FileState localFileState;
-	localFileState.Size = fileInfo.Size;
-	localFileState.Timestamp = fileInfo.LastModified;
+	localFileState.Size = BitConverter::HostToNetwork(fileInfo.Size);
+	localFileState.Timestamp = BitConverter::HostToNetwork(fileInfo.LastModified);
 	snprintf(localFileState.Path, sizeof(FileState::Path), remoteFileState.Path);
 
 	if (SendAll(&localFileState, sizeof(FileState)) == 0)
@@ -677,10 +689,15 @@ std::int64_t UFTSocket::ReceiveFile(char(&path)[255], UFTSocket_OnReceiveProgres
 		return 0;
 	}
 
+	localFileState.Size = BitConverter::NetworkToHost(localFileState.Size);
+	localFileState.Timestamp = BitConverter::NetworkToHost(localFileState.Timestamp);
+
 	auto localChunkCount = GetChunkCount(localFileState.Size);
 //	std::cout << "Local chunk count: " << localChunkCount << std::endl;
 	auto remoteChunkCount = GetChunkCount(remoteFileState.Size);
 //	std::cout << "Remote chunk count: " << remoteChunkCount << std::endl;
+
+	std::uint8_t signal = 1;
 
 	if ((fileInfoStatus != -1) && (localFileState.Size <= remoteFileState.Size))
 	{
@@ -776,8 +793,6 @@ std::int64_t UFTSocket::ReceiveFile(char(&path)[255], UFTSocket_OnReceiveProgres
 			{
 				WriteError("Error reading remote FileChunkHash");
 
-				fStream.close();
-
 				return 0;
 			}
 
@@ -788,8 +803,6 @@ std::int64_t UFTSocket::ReceiveFile(char(&path)[255], UFTSocket_OnReceiveProgres
 			if (SendAll(&localChunkHash, sizeof(FileChunkHash)) == 0)
 			{
 				WriteError("Error sending local FileChunkHash");
-
-				fStream.close();
 
 				return 0;
 			}
@@ -803,8 +816,6 @@ std::int64_t UFTSocket::ReceiveFile(char(&path)[255], UFTSocket_OnReceiveProgres
 				if (ReceiveCompressedChunk(remoteChunk) == 0)
 				{
 					WriteError("Error reading remote FileChunk");
-
-					fStream.close();
 
 					return 0;
 				}
@@ -829,13 +840,13 @@ std::int64_t UFTSocket::ReceiveFile(char(&path)[255], UFTSocket_OnReceiveProgres
 			);
 		}
 
+//		std::cout << "Reading " << remoteChunkCount - localChunkCount << " remote chunks" << std::endl;
+
 		for (std::uint32_t i = localChunkCount; i < remoteChunkCount; ++i)
 		{
 			if (ReceiveCompressedChunk(remoteChunk) == 0)
 			{
 				WriteError("Error reading remote FileChunk");
-
-				fStream.close();
 
 				return 0;
 			}
@@ -851,6 +862,13 @@ std::int64_t UFTSocket::ReceiveFile(char(&path)[255], UFTSocket_OnReceiveProgres
 				reinterpret_cast<const char*>(remoteChunk.Buffer),
 				remoteChunk.BufferSize
 			);
+
+			if (SendAll(&signal, 1) == 0)
+			{
+				WriteError("Error sending signal");
+
+				return 0;
+			}
 
 			onProgress(
 				(i * FILE_CHUNK_SIZE) + remoteChunk.BufferSize,
@@ -928,8 +946,6 @@ std::int64_t UFTSocket::ReceiveFile(char(&path)[255], UFTSocket_OnReceiveProgres
 			{
 				WriteError("Error reading remote FileChunk");
 
-				fStream.close();
-
 				return 0;
 			}
 
@@ -939,6 +955,13 @@ std::int64_t UFTSocket::ReceiveFile(char(&path)[255], UFTSocket_OnReceiveProgres
 				reinterpret_cast<const char*>(remoteChunk.Buffer),
 				remoteChunk.BufferSize
 			);
+
+			if (SendAll(&signal, 1) == 0)
+			{
+				WriteError("Error sending signal");
+
+				return 0;
+			}
 
 			onProgress(
 				(i * FILE_CHUNK_SIZE) + remoteChunk.BufferSize,

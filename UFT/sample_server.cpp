@@ -1,7 +1,4 @@
 // -----------------------------------------------------------------------------
-// Program: Materials ISS Experiment (MISSE)
-// File: UFTReceiver.cpp
-// Purpose: UFTSocket server for receiving files from UFTSender
 // Written by: F. Barney
 // Date: 6/14/2020
 // -----------------------------------------------------------------------------
@@ -19,7 +16,7 @@
 
 int main(int argc, char* argv[])
 {
-	std::cout << std::endl << "Misse UFT Server" << std::endl;
+	std::cout << std::endl << "UFT Sample Server" << std::endl;
 	std::cout << " - Press Ctrl+C to exit" << std::endl << std::endl;
 
 	UFTSocket listener;
@@ -71,7 +68,9 @@ int main(int argc, char* argv[])
 	{
 		std::cout << "Client connected" << std::endl;
 
-		client.SetTimeout(5 * 1000);
+		client.SetTimeout(
+			10 * 1000
+		);
 
 		for (int i = 1; i < argc; i += 2)
 		{
@@ -83,6 +82,8 @@ int main(int argc, char* argv[])
 
 				break;
 			}
+
+			std::cout << "Sent " << argv[i] << " to " << argv[i + 1] << std::endl;
 		}
 
 		while (client.IsConnected())
@@ -91,14 +92,30 @@ int main(int argc, char* argv[])
 
 			while ((fileSize = client.ReceiveFile(recvFilePath, onReceive, nullptr)) > 0)
 			{
+
 				std::cout << "Received " << recvFilePath << " (" << fileSize << " bytes)" << std::endl;
 			}
 
-			auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(
-				std::chrono::high_resolution_clock::now() - start
-			);
+			if (fileSize == 0)
+			{
+				std::cerr << "Connection closed" << std::endl;
 
-			std::cout << "Time: " << elapsed.count() << "ms" << std::endl;
+				client.Disconnect();
+			}
+			else if (fileSize == -2)
+			{
+				std::cerr << "Internal API Error" << std::endl;
+
+				client.Disconnect();
+			}
+			else if (fileSize > 0)
+			{
+				auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(
+					std::chrono::high_resolution_clock::now() - start
+				);
+
+				std::cout << "Time: " << elapsed.count() << "ms" << std::endl;
+			}
 		}
 
 		client.Close();

@@ -1,14 +1,11 @@
 // -----------------------------------------------------------------------------
-// Program: Materials ISS Experiment (MISSE)
-// File: Java_com_snaju_io_UFTSocket.cpp
-// Purpose: JNI connector for UFTSocket file transfers
 // Written by: F. Barney
 // Date: 6/14/2020
 // -----------------------------------------------------------------------------
 
-#include <jni.h>
-
 #include "UFTSocket.hpp"
+
+#include <jni.h>
 
 inline UFTSocket* GetSocket(JNIEnv* lpJNI, jobject object)
 {

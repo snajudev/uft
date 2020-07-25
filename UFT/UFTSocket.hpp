@@ -1,7 +1,4 @@
 // -----------------------------------------------------------------------------
-// Program: Materials ISS Experiment (MISSE)
-// File: UFTSocket.hpp
-// Purpose: Socket wrapper for UDT file and buffer IO
 // Written by: F. Barney
 // Date: 6/14/2020
 // -----------------------------------------------------------------------------
