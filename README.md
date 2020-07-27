@@ -30,5 +30,5 @@ TODO
 </pre>
 ##### Receive File<br />
 <pre>
-TOOD
+TODO
 </pre>
