@@ -46,7 +46,26 @@ make sample_server
 ```bash
 ./sample_server /path/to/local/source /path/on/remote/destination
 ```
-##### Receive file(s) and send file on accept
+##### Receive file(s) and send files on accept
 ```bash
 ./sample_server /path/to/local/source1 /path/on/remote/destination1 /path/to/local/source2 /path/on/remote/destination2
 ```
+
+#
+#### How do I use UFT from C++?
+The included sample_client.cpp and sample_server.cpp files demonstrate API usage.
+
+#
+#### How do I use UFT from Java?
+##### Build
+```bash
+make libJUFT.so
+```
+
+##### Load
+```java
+system.loadLibrary("/path/to/libJUFT.so");
+```
+
+##### API
+Use UFTSocket.java in your project to reference the same native API exposed by UFTSocket.hpp
