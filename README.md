@@ -17,6 +17,11 @@ File chunks are compared using a 64 bit FNV 1a hash.
 All transfers are synchronous, meaning if one end is sending then the other must be receiving.
 
 #
+#### Warning
+The internal protocol has no concept of authentication and assumes all received data is valid.
+This shouldn't be used on public networks or those with the possibility of a malicious sender.
+
+#
 #### What does UFT depend on?
 * [UDT](https://udt.sourceforge.io/)
 * [ZLIB](https://zlib.net/)
@@ -24,11 +29,24 @@ All transfers are synchronous, meaning if one end is sending then the other must
 
 #
 #### How do I use UFT?
-##### Send File<br />
-<pre>
-TODO
-</pre>
-##### Receive File<br />
-<pre>
-TODO
-</pre>
+##### Build
+```bash
+make sample_client
+make sample_server
+```
+##### Send file
+```bash
+./sample_client 192.168.1.10 /path/to/local/source /path/on/remote/destination
+```
+##### Receive file(s)
+```bash
+./sample_server
+```
+##### Receive file(s) and send file on accept
+```bash
+./sample_server /path/to/local/source /path/on/remote/destination
+```
+##### Receive file(s) and send file on accept
+```bash
+./sample_server /path/to/local/source1 /path/on/remote/destination1 /path/to/local/source2 /path/on/remote/destination2
+```
