@@ -2,8 +2,11 @@ package com.snaju.io;
 
 public class UFTSocket
 {
+	// non-mutable, maintained by native code
 	private long socket = 0;
+	// non-mutable, maintained by native code
 	private int timeout = 20 * (60 * 1000);
+	// non-mutable, maintained by native code
 	private boolean isBlockingMode = true;
 
 	public boolean isBlocking()
