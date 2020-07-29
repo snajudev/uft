@@ -8,11 +8,10 @@
 #include <chrono>
 #include <iostream>
 
-#define IP_ADDRESS(a, b, c, d)   ((a << 24) | (b << 16) | (c << 8) | d)
+#include <arpa/inet.h>
+
 #define IP_ADDRESS_TO_STREAM(ip) ((ip >> 24) & 0xFF) << '.' << ((ip >> 16) & 0xFF) << '.' << ((ip >> 8) & 0xFF) << '.' << (ip & 0xFF)
 
-//#define SOCKET_HOST IP_ADDRESS(127, 0, 0, 1)
-#define SOCKET_HOST IP_ADDRESS(10, 0, 0, 116)
 #define SOCKET_PORT 9000
 
 int main(int argc, char* argv[])
@@ -20,10 +19,19 @@ int main(int argc, char* argv[])
 	std::cout << std::endl << "UFT Sample Client" << std::endl;
 	std::cout << " - Press Ctrl+C to exit" << std::endl << std::endl;
 
-	if (argc != 3)
+	if (argc != 4)
 	{
 		std::cerr << "Invalid args" << std::endl;
-		std::cerr << argv[0] << " /path/to/local/source /path/on/remote/destination" << std::endl;
+		std::cerr << argv[0] << " host /path/to/local/source /path/on/remote/destination" << std::endl;
+
+		return -1;
+	}
+
+	in_addr addr;
+	
+	if (inet_pton(AF_INET, argv[1], &addr) != 1)
+	{
+		std::cerr << "Invalid IP: " << argv[1] << std::endl;
 
 		return -1;
 	}
@@ -41,16 +49,20 @@ int main(int argc, char* argv[])
 		return -1;
 	}
 
-	if (!socket.Connect(SOCKET_HOST, SOCKET_PORT))
+	auto remoteAddress = htonl(
+		addr.s_addr
+	);
+
+	if (!socket.Connect(remoteAddress, SOCKET_PORT))
 	{
-		std::cerr << "Error connecting to " << IP_ADDRESS_TO_STREAM(SOCKET_HOST) << ':' << SOCKET_PORT << std::endl;
+		std::cerr << "Error connecting to " << IP_ADDRESS_TO_STREAM(remoteAddress) << ':' << SOCKET_PORT << std::endl;
 
 		socket.Close();
 
 		return -1;
 	}
 
-	std::cout << "Connected to " << IP_ADDRESS_TO_STREAM(SOCKET_HOST) << ':' << SOCKET_PORT << std::endl;
+	std::cout << "Connected to " << IP_ADDRESS_TO_STREAM(remoteAddress) << ':' << SOCKET_PORT << std::endl;
 	
 	if (!socket.SetBlocking(true))
 	{
