@@ -57,7 +57,7 @@ The included sample_client.cpp and sample_server.cpp files demonstrate API usage
 
 #
 #### How do I use UFT from Java?
-The included SampleUFTClient.java and SampleUFTServer.java files demonstrate API usage.
+The included SampleClient.java and SampleServer.java files demonstrate API usage.
 
 ##### Build
 ```bash
