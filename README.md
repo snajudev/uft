@@ -4,7 +4,7 @@
 #
 #### What is UFT?
 UFT is a UDP based file transfer protocol built on top of UDT.
-It was designed for transferring quickly and effeciently, even if a connection is broken, while being light enough to run on a single board computer.
+It was designed for transferring files quickly and effeciently, even if a connection is broken, while being light enough to run on a single board computer.
 
 #
 #### How does UFT work?
