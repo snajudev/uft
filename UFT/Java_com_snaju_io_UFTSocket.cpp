@@ -220,26 +220,24 @@ extern "C" JNIEXPORT jboolean Java_com_snaju_io_UFTSocket_connect(JNIEnv* lpJNI,
 
 extern "C" JNIEXPORT void Java_com_snaju_io_UFTSocket_close(JNIEnv* lpJNI, jobject object)
 {
-	auto lpSocket = GetSocket(
-		lpJNI,
-		object
-	);
-
-	if (lpSocket->IsConnected())
+	if (auto lpSocket = GetSocket(lpJNI, object))
 	{
+		if (lpSocket->IsConnected())
+		{
 
-		lpSocket->Disconnect();
+			lpSocket->Disconnect();
+		}
+
+		lpSocket->Close();
+
+		delete lpSocket;
+
+		SetSocket(
+			lpJNI,
+			object,
+			nullptr
+		);
 	}
-
-	lpSocket->Close();
-
-	delete lpSocket;
-
-	SetSocket(
-		lpJNI,
-		object,
-		nullptr
-	);
 }
 
 extern "C" JNIEXPORT jboolean Java_com_snaju_io_UFTSocket_setBlocking(JNIEnv* lpJNI, jobject object, jboolean block)
@@ -427,6 +425,7 @@ extern "C" JNIEXPORT jlong Java_com_snaju_io_UFTSocket_receiveFile(JNIEnv* lpJNI
 
 		if ((result = lpSocket->ReceiveFile(_path, onReceive, &param)) == 0)
 		{
+
 			Java_com_snaju_io_UFTSocket_close(
 				lpJNI,
 				object
@@ -448,15 +447,10 @@ extern "C" JNIEXPORT jlong Java_com_snaju_io_UFTSocket_receiveFile(JNIEnv* lpJNI
 				_path
 			);
 
-			lpJNI->CallVoidMethod(
+			lpJNI->CallObjectMethod(
 				path,
 				jMethodId,
 				jString
-			);
-
-			lpJNI->ReleaseStringUTFChars(
-				jString,
-				_path
 			);
 		}
 
