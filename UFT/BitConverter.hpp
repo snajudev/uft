@@ -64,17 +64,6 @@ class BitConverter
 		}
 	};
 	template<typename T>
-	struct Flip_The_Bytes<T, 16, false>
-	{
-		static constexpr T Flip(T value)
-		{
-			return static_cast<T>(
-				((static_cast<std::uint16_t>(value) & 0x00FF) << 8) |
-				((static_cast<std::uint16_t>(value) & 0xFF00) >> 8)
-			);
-		}
-	};
-	template<typename T>
 	struct Flip_The_Bytes<T, 32, true>
 	{
 		static constexpr T Flip(T value)
@@ -86,19 +75,6 @@ class BitConverter
 				((static_cast<Base>(value) & 0x00FF0000) >> 8) |
 				((static_cast<Base>(value) & 0x0000FF00) << 8) |
 				((static_cast<Base>(value) & 0x000000FF) << 24)
-			);
-		}
-	};
-	template<typename T>
-	struct Flip_The_Bytes<T, 32, false>
-	{
-		static constexpr T Flip(T value)
-		{
-			return static_cast<T>(
-				((static_cast<std::uint32_t>(value) & 0xFF000000) >> 24) |
-				((static_cast<std::uint32_t>(value) & 0x00FF0000) >> 8) |
-				((static_cast<std::uint32_t>(value) & 0x0000FF00) << 8) |
-				((static_cast<std::uint32_t>(value) & 0x000000FF) << 24)
 			);
 		}
 	};
@@ -118,23 +94,6 @@ class BitConverter
 				((static_cast<Base>(value) & 0x0000000000FF0000) << 24) |
 				((static_cast<Base>(value) & 0x000000000000FF00) << 40) |
 				((static_cast<Base>(value) & 0x00000000000000FF) << 56)
-			);
-		}
-	};
-	template<typename T>
-	struct Flip_The_Bytes<T, 64, false>
-	{
-		static constexpr T Flip(T value)
-		{
-			return static_cast<T>(
-				((static_cast<std::uint64_t>(value) & 0xFF00000000000000) >> 56) |
-				((static_cast<std::uint64_t>(value) & 0x00FF000000000000) >> 40) |
-				((static_cast<std::uint64_t>(value) & 0x0000FF0000000000) >> 24) |
-				((static_cast<std::uint64_t>(value) & 0x000000FF00000000) >> 8) |
-				((static_cast<std::uint64_t>(value) & 0x00000000FF000000) << 8) |
-				((static_cast<std::uint64_t>(value) & 0x0000000000FF0000) << 24) |
-				((static_cast<std::uint64_t>(value) & 0x000000000000FF00) << 40) |
-				((static_cast<std::uint64_t>(value) & 0x00000000000000FF) << 56)
 			);
 		}
 	};
