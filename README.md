@@ -57,15 +57,13 @@ The included sample_client.cpp and sample_server.cpp files demonstrate API usage
 
 #
 #### How do I use UFT from Java?
+The included SampleUFTClient.java and SampleUFTServer.java files demonstrate API usage.
+
 ##### Build
 ```bash
 make libJUFT.so
 ```
 
-##### Load
-```java
-system.loadLibrary("/path/to/libJUFT.so");
-```
-
-##### API
-Use UFTSocket.java in your project to reference the same native API exposed by UFTSocket.hpp
+##### Note about stack size
+The stack size should be at least 4MB.
+This can be increased at start time through a JVM parameter ``java -Xss4m ...``
