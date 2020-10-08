@@ -39,8 +39,7 @@ sample_server: $(SOURCE_FILES_SAMPLE_SERVER)
 	$(CXX) $(CPPFLAGS) $(CXXFLAGS) $^ -o $@ $(LDFLAGS) $(LDLIBS)
 
 clean:
-
-delete:
+	$(RM) *.o
 	$(RM) libUFT.so
 	$(RM) libJUFT.so
 	$(RM) sample_client
