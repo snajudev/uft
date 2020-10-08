@@ -3,9 +3,9 @@ CXX                        ?= g++
 
 UDT_ROOT_DIRECTORY         ?= ../udt/src
 
-#JDK_ROOT_DIRECTORY       ?= /usr/lib/jvm/java-8-openjdk-armhf
-#JDK_ROOT_DIRECTORY       ?= /usr/lib/jvm/adoptopenjdk-8-hotspot-armhf
-JDK_ROOT_DIRECTORY         ?= /usr/lib/jvm/adoptopenjdk-8-hotspot-amd64
+JDK_ROOT_DIRECTORY         ?= /usr/lib/jvm/java-8-openjdk-armhf
+#JDK_ROOT_DIRECTORY         ?= /usr/lib/jvm/adoptopenjdk-8-hotspot-armhf
+#JDK_ROOT_DIRECTORY         ?= /usr/lib/jvm/adoptopenjdk-8-hotspot-amd64
 
 CXXFLAGS                   += -Wall -std=c++14 -O3
 CXXFLAGS                   += -I$(UDT_ROOT_DIRECTORY)
