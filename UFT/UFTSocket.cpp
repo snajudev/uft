@@ -80,7 +80,10 @@ UFTSocket::UFTSocket()
 
 UFTSocket::~UFTSocket()
 {
-	delete lpContext;
+	if (lpContext)
+	{
+		delete lpContext;
+	}
 }
 
 bool UFTSocket::IsOpen() const

@@ -26,13 +26,20 @@ class UFTSocket
 	
 	enum class ErrorCodes : std::uint8_t;
 
-	Context* const lpContext;
+	Context* lpContext;
 
-	UFTSocket(UFTSocket&&) = delete;
 	UFTSocket(const UFTSocket&) = delete;
 
 public:
 	UFTSocket();
+
+	UFTSocket(UFTSocket&& socket)
+		: lpContext(
+			socket.lpContext
+		)
+	{
+		socket.lpContext = nullptr;
+	}
 
 	virtual ~UFTSocket();
 
@@ -108,6 +115,8 @@ public:
 	// @return -2 on api error
 	// @return 0 on connection closed
 	std::int64_t ReceiveFile(char(&path)[255], UFTSocket_OnReceiveProgress onProgress, void* lpParam);
+
+	UFTSocket& operator = (UFTSocket&&) = delete;
 
 private:
 	// @return number of bytes sent
