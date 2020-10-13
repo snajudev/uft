@@ -69,7 +69,7 @@ The stack size should be at least 4MB.
 This can be increased at start time through a JVM parameter ``java -Xss4m ...``
 
 
-##### Build UDT
+#### Build UDT
 The UDT library supports multiple platforms.
 The OS and CPU architecture must be specified through arguments. These are some combinations.
 
