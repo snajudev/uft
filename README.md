@@ -67,3 +67,34 @@ make libJUFT.so
 ##### Note about stack size
 The stack size should be at least 4MB.
 This can be increased at start time through a JVM parameter ``java -Xss4m ...``
+
+
+##### Build UDT
+The UDT library supports multiple platforms.
+The OS and CPU architecture must be specified through arguments. These are some combinations.
+
+```bash
+make -e os=LINUX arch=IA32
+make -e os=LINUX arch=IA64
+make -e os=LINUX arch=ARM
+make -e os=LINUX arch=ARM64
+make -e os=LINUX arch=AMD64
+make -e os=LINUX arch=POWERPC
+make -e os=LINUX arch=SPARC
+
+make -e os=WIN32 arch=IA32
+make -e os=WIN32 arch=IA64
+make -e os=WIN32 arch=ARM
+make -e os=WIN32 arch=ARM64
+make -e os=WIN32 arch=AMD64
+make -e os=WIN32 arch=POWERPC
+make -e os=WIN32 arch=SPARC
+
+make -e os=OSX arch=IA32
+make -e os=OSX arch=IA64
+make -e os=OSX arch=ARM
+make -e os=OSX arch=ARM64
+make -e os=OSX arch=AMD64
+make -e os=OSX arch=POWERPC
+make -e os=OSX arch=SPARC
+```
