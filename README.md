@@ -68,9 +68,8 @@ make libJUFT.so
 The stack size should be at least 4MB.
 This can be increased at start time through a JVM parameter ``java -Xss4m ...``
 
-
-#### Build UDT
-The UDT library supports multiple platforms.
+#### How do I build dependencies?
+The UDT library is included with UFT but must be built independently due to support for multiple OS and CPU architectures.
 The OS and CPU architecture must be specified through arguments. These are some combinations.
 
 ```bash
