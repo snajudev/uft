@@ -44,24 +44,26 @@ struct UFTSocket::FileInfo
 	UFTSocket_FileTimestamp LastModified;
 };
 
+#pragma pack(push, 1)
 struct UFTSocket::FileState
 {
 	UFTSocket_FileSize      Size;
 	UFTSocket_FileTimestamp Timestamp;
 	char                    Path[255];
-} __attribute__((__packed__));
+};
 
 struct UFTSocket::FileChunk
 {
 	std::uint8_t  Buffer[FILE_CHUNK_SIZE];
 	std::uint32_t BufferSize;
-} __attribute__((__packed__));
+};
 
 struct UFTSocket::CompressedFileChunkHeader
 {
 	std::uint32_t Size;
 	std::uint32_t CompressedSize;
-} __attribute__((__packed__));
+};
+#pragma pack(pop)
 
 enum class UFTSocket::ErrorCodes : std::uint8_t
 {
