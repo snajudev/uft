@@ -3,25 +3,157 @@
 // Date: 6/14/2020
 // -----------------------------------------------------------------------------
 
+#if defined(WIN32)
+	#pragma comment(lib, "Ws2_32.lib")
+	#pragma comment(lib, "zlibstatic.lib")
+#endif
+
 #include "UFTSocket.hpp"
 #include "BitConverter.hpp"
 
+#if !defined(WIN32)
+	#include <mutex>
+#endif
+
+#include <fstream>
+#include <iostream>
+
 #include <udt.h>
 #include <zlib.h>
-
 #include <assert.h>
 #include <string.h>
-#include <iostream>
-#include <fstream>
-#include <mutex>
 
-#include <sys/stat.h>
+#if defined(WIN32)
+	#define VC_EXTRALEAN
+
+	#define WIN32_LEAN_AND_MEAN
+
+	#include <winapifamily.h>
+
+	#if !defined(_WIN32_WINNT)
+		#define _WIN32_WINNT_NT4          0x0400 // Windows NT 4.0
+		#define _WIN32_WINNT_WIN2K        0x0500 // Windows 2000
+		#define _WIN32_WINNT_WINXP        0x0501 // Windows XP
+		#define _WIN32_WINNT_WS03         0x0502 // Windows Server 2003
+		#define _WIN32_WINNT_WIN6         0x0600 // Windows Vista
+		#define _WIN32_WINNT_VISTA        0x0600 // Windows Vista
+		#define _WIN32_WINNT_WS08         0x0600 // Windows Server 2008
+		#define _WIN32_WINNT_LONGHORN     0x0600 // Windows Vista
+		#define _WIN32_WINNT_WIN7         0x0601 // Windows 7
+		#define _WIN32_WINNT_WIN8         0x0602 // Windows 8
+		#define _WIN32_WINNT_WINBLUE      0x0603 // Windows 8.1
+		#define _WIN32_WINNT_WINTHRESHOLD 0x0A00 // Windows 10
+		#define _WIN32_WINNT_WIN10        0x0A00 // Windows 10
+
+		#define WINVER			_WIN32_WINNT_WIN7
+		#define _WIN32_WINNT	_WIN32_WINNT_WIN7
+
+		#define WINAPI_FAMILY	WINAPI_FAMILY_DESKTOP_APP
+
+		#include <Windows.h>
+	#endif
+#else
+	#include <sys/stat.h>
+#endif
 
 typedef std::uint64_t UFTSocket_FileTimestamp;
 
 constexpr std::uint64_t FILE_CHUNK_SIZE = 1024 * 1024; // 1MB
 constexpr std::int32_t  COMPRESSION_LEVEL = Z_DEFAULT_COMPRESSION;
 constexpr std::uint64_t COMPRESSED_FILE_CHUNK_SIZE = FILE_CHUNK_SIZE * 2;
+
+class LockGuard;
+
+class Mutex final
+{
+	friend LockGuard;
+
+#if !defined(WIN32)
+	std::mutex mutex;
+#else
+	CRITICAL_SECTION cs;
+#endif
+
+	Mutex(Mutex&&) = delete;
+	Mutex(const Mutex&) = delete;
+
+public:
+	Mutex()
+	{
+#if defined(WIN32)
+		InitializeCriticalSection(
+			&cs
+		);
+#endif
+	}
+
+	~Mutex()
+	{
+#if defined(WIN32)
+		DeleteCriticalSection(
+			&cs
+		);
+#endif
+	}
+
+	void Lock()
+	{
+#if !defined(WIN32)
+		mutex.lock();
+#else
+		EnterCriticalSection(
+			&cs
+		);
+#endif
+	}
+
+	void Unlock()
+	{
+#if !defined(WIN32)
+		mutex.unlock();
+#else
+		LeaveCriticalSection(
+			&cs
+		);
+#endif
+	}
+};
+
+class LockGuard final
+{
+#if !defined(WIN32)
+	std::lock_guard<std::mutex> guard;
+#else
+	Mutex* const lpMutex;
+#endif
+
+	LockGuard(LockGuard&&) = delete;
+	LockGuard(const LockGuard&) = delete;
+
+public:
+	explicit LockGuard(Mutex& mutex)
+#if !defined(WIN32)
+		: guard(
+			mutex.mutex
+		)
+#else
+		: lpMutex(
+			&mutex
+		)
+#endif
+	{
+#if defined(WIN32)
+		lpMutex->Lock();
+#endif
+	}
+
+	~LockGuard()
+	{
+#if defined(WIN32)
+		lpMutex->Unlock();
+#endif
+	}
+};
 
 struct UFTSocket::Context
 {
@@ -32,7 +164,7 @@ struct UFTSocket::Context
 
 	std::int32_t Timeout     = 15 * 1000;
 	
-	std::mutex   Mutex;
+	::Mutex      Mutex;
 
 	UDTSOCKET    Socket;
 };
@@ -309,7 +441,7 @@ std::int64_t UFTSocket::SendFile(const char* lpSource, const char* lpDestination
 	assert(IsOpen());
 	assert(IsConnected());
 
-	std::lock_guard<std::mutex> lock(
+	LockGuard lock(
 		lpContext->Mutex
 	);
 
@@ -464,7 +596,9 @@ std::int64_t UFTSocket::SendFile(const char* lpSource, const char* lpDestination
 				FILE_CHUNK_SIZE
 			);
 
-			localChunk.BufferSize = fStream.gcount();
+			localChunk.BufferSize = static_cast<std::uint32_t>(
+				fStream.gcount()
+			);
 
 			auto localChunkHash = CalculateHash(
 				localChunk.Buffer,
@@ -544,7 +678,9 @@ std::int64_t UFTSocket::SendFile(const char* lpSource, const char* lpDestination
 				FILE_CHUNK_SIZE
 			);
 
-			localChunk.BufferSize = fStream.gcount();
+			localChunk.BufferSize = static_cast<std::uint32_t>(
+				fStream.gcount()
+			);
 
 //			std::cout << "Sending " << localChunk.BufferSize << " bytes" << std::endl;
 
@@ -587,7 +723,9 @@ std::int64_t UFTSocket::SendFile(const char* lpSource, const char* lpDestination
 				FILE_CHUNK_SIZE
 			);
 
-			localChunk.BufferSize = fStream.gcount();
+			localChunk.BufferSize = static_cast<std::uint32_t>(
+				fStream.gcount()
+			);
 
 //			std::cout << "Sending " << localChunk.BufferSize << " bytes" << std::endl;
 
@@ -629,7 +767,7 @@ std::int64_t UFTSocket::ReceiveFile(char(&path)[255], UFTSocket_OnReceiveProgres
 	assert(IsOpen());
 	assert(IsConnected());
 
-	std::lock_guard<std::mutex> lock(
+	LockGuard lock(
 		lpContext->Mutex
 	);
 
@@ -780,7 +918,9 @@ std::int64_t UFTSocket::ReceiveFile(char(&path)[255], UFTSocket_OnReceiveProgres
 				FILE_CHUNK_SIZE
 			);
 
-			localChunk.BufferSize = fStream.gcount();
+			localChunk.BufferSize = static_cast<std::uint32_t>(
+				fStream.gcount()
+			);
 
 			auto localChunkHash = CalculateHash(
 				localChunk.Buffer,
@@ -1173,7 +1313,9 @@ std::uint32_t UFTSocket::GetChunkCount(UFTSocket_FileSize fileSize)
 
 	if (fileSize)
 	{
-		count = fileSize / FILE_CHUNK_SIZE;
+		count = static_cast<std::uint32_t>(
+			fileSize / FILE_CHUNK_SIZE
+		);
 
 		if (fileSize % FILE_CHUNK_SIZE)
 		{
@@ -1189,19 +1331,31 @@ std::uint32_t UFTSocket::GetChunkCount(UFTSocket_FileSize fileSize)
 // @return -1 if not found
 int UFTSocket::GetFileInfo(const char* path, FileInfo& info)
 {
+#if defined(WIN32)
+	struct _stat64 stat;
+#else
 	struct stat64 stat;
+#endif
 
+#if defined(WIN32)
+	if (_stat64(path, &stat) == -1)
+#else
 	if (stat64(path, &stat) == -1)
+#endif
 	{
 		auto lastError = errno;
 
 		if ((lastError != ENOENT) && (lastError != ENOTDIR))
 		{
+#if defined(WIN32)
+			WriteLastErrorOS("_stat64");
+#else
 			WriteLastErrorOS("stat64");
+#endif
 
 			return 0;
 		}
-		
+
 		info.Size = 0;
 		info.LastAccessed = 0;
 		info.LastModified = 0;
@@ -1228,5 +1382,10 @@ void UFTSocket::WriteLastError(const char* function)
 
 void UFTSocket::WriteLastErrorOS(const char* function)
 {
+#if defined(WIN32)
 	std::cerr << "Error calling " << function << ": " << errno << std::endl;
+//	std::cerr << "Error calling " << function << ": " << GetLastError() << std::endl;
+#else
+	std::cerr << "Error calling " << function << ": " << errno << std::endl;
+#endif
 }
