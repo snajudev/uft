@@ -12,61 +12,43 @@ UFT works with the concept of two devices, one client and one server.
 File transfers are initiated by sending the file size, timestamp and destination path.
 If the file exists on the receiving end then the size is compared to the sender's.
 If the receiver's file size is greater than the sender's then the file is deleted and transferred one chunk at a time.
-If the receiver's file size is less than or equal to the sender's then the file is verified and sent one chunk at a time only as needed.
-File chunks are compared using a 64 bit FNV 1a hash.
-All transfers are synchronous, meaning if one end is sending then the other must be receiving.
-
-#
-#### Warning
-The internal protocol has no concept of authentication and assumes all received data is valid.
-This shouldn't be used on public networks or those with the possibility of a malicious sender.
+If the receiver's file size is less than or equal to the sender's then the file is read in chunks and a hash is compared against the sender. Chunks are transmitted when invalid and/or missing.
 
 #
 #### What does UFT depend on?
 * [UDT](https://udt.sourceforge.io/)
 * [ZLIB](https://zlib.net/)
-* JDK (only if using Java binding)
 
 #
 #### How do I use UFT?
 ##### Build
 ```bash
-make sample_client
-make sample_server
+make uft_client
+make uft_server
+```
+##### Run server
+```bash
+./uft_server --local-host=127.0.0.1 --local-port=9000
+./uft_server --local-host=127.0.0.1 --local-port=9000 --timeout={seconds}
+```
+##### Get file list
+```bash
+./uft_client --remote-host=127.0.0.1 --remote-port=9000 --command=file_list --path={path}
 ```
 ##### Send file
 ```bash
-./sample_client 192.168.1.10 /path/to/local/source /path/on/remote/destination
+./uft_client --remote-host=127.0.0.1 --remote-port=9000 --command=send --source={source} --destination={destination}
+./uft_client --remote-host=127.0.0.1 --remote-port=9000 --timeout={seconds} --command=send --source={source} --destination={destination}
+./uft_client --remote-host=127.0.0.1 --remote-port=9000 --auth-username={username} --auth-password={password} --command=send --source={source} --destination={destination}
+./uft_client --remote-host=127.0.0.1 --remote-port=9000 --auth-username={username} --auth-password={password} --timeout={seconds} --command=send --source={source} --destination={destination}
 ```
-##### Receive file(s)
+##### Receive file
 ```bash
-./sample_server
+./uft_client --remote-host=127.0.0.1 --remote-port=9000 --command=receive --source={source} --destination={destination}
+./uft_client --remote-host=127.0.0.1 --remote-port=9000 --timeout={seconds} --command=receive --source={source} --destination={destination}
+./uft_client --remote-host=127.0.0.1 --remote-port=9000 --auth-username={username} --auth-password={password} --command=receive --source={source} --destination={destination}
+./uft_client --remote-host=127.0.0.1 --remote-port=9000 --auth-username={username} --auth-password={password} --timeout={seconds} --command=receive --source={source} --destination={destination}
 ```
-##### Receive file(s) and send file on accept
-```bash
-./sample_server /path/to/local/source /path/on/remote/destination
-```
-##### Receive file(s) and send files on accept
-```bash
-./sample_server /path/to/local/source1 /path/on/remote/destination1 /path/to/local/source2 /path/on/remote/destination2
-```
-
-#
-#### How do I use UFT from C++?
-The included sample_client.cpp and sample_server.cpp files demonstrate API usage.
-
-#
-#### How do I use UFT from Java?
-The included SampleClient.java and SampleServer.java files demonstrate API usage.
-
-##### Build
-```bash
-make libJUFT.so
-```
-
-##### Note about stack size
-The stack size should be at least 4MB.
-This can be increased at start time through a JVM parameter ``java -Xss4m ...``
 
 #
 #### How do I build dependencies?
@@ -89,12 +71,4 @@ make -e os=WIN32 arch=ARM64
 make -e os=WIN32 arch=AMD64
 make -e os=WIN32 arch=POWERPC
 make -e os=WIN32 arch=SPARC
-
-make -e os=OSX arch=IA32
-make -e os=OSX arch=IA64
-make -e os=OSX arch=ARM
-make -e os=OSX arch=ARM64
-make -e os=OSX arch=AMD64
-make -e os=OSX arch=POWERPC
-make -e os=OSX arch=SPARC
 ```

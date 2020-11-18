@@ -6,9 +6,29 @@
 #ifndef UFTSOCKET_HPP
 #define UFTSOCKET_HPP
 
+#include <list>
+#include <array>
+#include <string>
 #include <cstdint>
 
+#include <zlib.h>
+
+class ByteBuffer;
+
 typedef std::uint64_t UFTSocket_FileSize;
+
+typedef std::uint64_t UFTSocket_FileTimestamp;
+
+struct UFTSocket_FileInfo
+{
+	std::string             Name;
+	UFTSocket_FileSize      Size;
+	UFTSocket_FileTimestamp Timestamp;
+};
+
+typedef std::list<UFTSocket_FileInfo> UFTSocket_FileInfoList;
+
+typedef void(*UFTSocket_OnGetFileList)(const UFTSocket_FileInfoList& files, void* lpParam);
 
 typedef void(*UFTSocket_OnSendProgress)(UFTSocket_FileSize bytesSent, UFTSocket_FileSize fileSize, void* lpParam);
 
@@ -16,30 +36,89 @@ typedef void(*UFTSocket_OnReceiveProgress)(UFTSocket_FileSize bytesReceived, UFT
 
 class UFTSocket
 {
+	static constexpr std::uint64_t FILE_CHUNK_SIZE = 1 * (1024 * 1024); // 1MB
+	static constexpr std::int32_t  COMPRESSION_LEVEL = Z_DEFAULT_COMPRESSION;
+	static constexpr std::uint64_t COMPRESSED_FILE_CHUNK_SIZE = FILE_CHUNK_SIZE * 2;
+
 	struct Context;
-	struct FileInfo;
-	struct FileState;
-	struct FileChunk;
+
+	struct FileInfo
+	{
+		UFTSocket_FileSize      Size;
+		UFTSocket_FileTimestamp LastAccessed;
+		UFTSocket_FileTimestamp LastModified;
+	};
+
+	struct FileChunk
+	{
+		std::uint8_t  Buffer[FILE_CHUNK_SIZE];
+		std::uint32_t BufferSize;
+	};
+
 	typedef std::uint64_t FileChunkHash;
 
-	struct CompressedFileChunkHeader;
-	
-	enum class ErrorCodes : std::uint8_t;
+	enum class OPCodes : std::uint8_t
+	{
+		GetFileList,			// std::string Path
+
+		FileList,				// std::uint32 Count
+		FileListEntry,			// std::string Name			std::uint64 Size			std::uint64 Timestamp
+
+		SendFile,				// std::string Destination	std::uint64 Size			std::uint64 Timestamp
+		SendFileAck,			// std::uint64 Size			std::uint64 Timestamp
+		SendFileChunk,			// std::uint64 Offset		std::uint64 Size
+		SendFileChunkHash,		// std::uint64 Offset		std::uint64 Size			std::uint64 Hash
+		SendFileChunkHashAck,	// std::uint64 Offset		std::uint64 Size			std::uint64 Hash
+
+		ReceiveFile,			// std::string Source		std::uint64 Size			std::uint64 Timestamp
+		ReceiveFileAck,			// std::uint64 Size			std::uint64 Timestamp
+		ReceiveFileChunk,		// std::uint64 Offset		std::uint64 Size
+		ReceiveFileChunkHash,	// std::uint64 Offset		std::uint64 Size			std::uint64 Hash
+		ReceiveFileChunkHashAck,// std::uint64 Offset		std::uint64 Size			std::uint64 Hash
+
+		CompleteSendFile,
+		CompleteSendFileAck,
+
+		CompleteReceiveFile,
+		CompleteReceiveFileAck,
+
+		COUNT
+	};
+
+	enum class ErrorCodes : std::uint8_t
+	{
+		Success,
+
+		FileInfoFailed,
+		FileOpenFailed
+	};
+
+#pragma pack(push, 1)
+	struct PacketHeader
+	{
+		OPCodes       OPCode;
+		std::uint64_t DataSize;
+	};
+
+	struct CompressedFileChunkHeader
+	{
+		std::uint32_t Size;
+		std::uint32_t CompressedSize;
+	};
+#pragma pack(pop)
+
+	typedef std::array<std::uint8_t, COMPRESSED_FILE_CHUNK_SIZE> CompressedFileChunkBuffer;
 
 	Context* lpContext;
+	FileChunk* lpFileChunk;
+	CompressedFileChunkBuffer* lpCompressedFileChunkBuffer;
 
 	UFTSocket(const UFTSocket&) = delete;
 
 public:
 	UFTSocket();
 
-	UFTSocket(UFTSocket&& socket)
-		: lpContext(
-			socket.lpContext
-		)
-	{
-		socket.lpContext = nullptr;
-	}
+	UFTSocket(UFTSocket&& socket);
 
 	virtual ~UFTSocket();
 
@@ -69,10 +148,14 @@ public:
 
 	void Disconnect();
 
-	// @return file size in bytes
-	// @return -2 on api error
-	// @return 0 on connection closed
-	std::int64_t SendFile(const char* lpSource, const char* lpDestination)
+	// @return false on connection closed
+	bool Update();
+
+	// @return false on connection closed
+	bool GetFileList(const char* lpSource, UFTSocket_OnGetFileList onGetFileList, void* lpParam);
+
+	// @return false on connection closed
+	bool SendFile(const char* lpSource, const char* lpDestination)
 	{
 		UFTSocket_OnSendProgress onProgress(
 			[](UFTSocket_FileSize _bytesSent, UFTSocket_FileSize _fileSize, void* _lpParam)
@@ -87,16 +170,11 @@ public:
 			nullptr
 		);
 	}
-	// @return file size in bytes
-	// @return -2 on api error
-	// @return 0 on connection closed
-	std::int64_t SendFile(const char* lpSource, const char* lpDestination, UFTSocket_OnSendProgress onProgress, void* lpParam);
+	// @return false on connection closed
+	bool SendFile(const char* lpSource, const char* lpDestination, UFTSocket_OnSendProgress onProgress, void* lpParam);
 
-	// @return file size in bytes
-	// @return -1 if would block
-	// @return -2 on api error
-	// @return 0 on connection closed
-	std::int64_t ReceiveFile(char(&path)[255])
+	// @return false on connection closed
+	bool ReceiveFile(const char* lpSource, const char* lpDestination)
 	{
 		UFTSocket_OnReceiveProgress onProgress(
 			[](UFTSocket_FileSize _bytesReceived, UFTSocket_FileSize _fileSize, void* _lpParam)
@@ -105,20 +183,30 @@ public:
 		);
 
 		return ReceiveFile(
-			path,
+			lpSource,
+			lpDestination,
 			onProgress,
 			nullptr
 		);
 	}
-	// @return file size in bytes
-	// @return -1 if would block
-	// @return -2 on api error
-	// @return 0 on connection closed
-	std::int64_t ReceiveFile(char(&path)[255], UFTSocket_OnReceiveProgress onProgress, void* lpParam);
+	// @return false on connection closed
+	bool ReceiveFile(const char* lpSource, const char* lpDestination, UFTSocket_OnReceiveProgress onProgress, void* lpParam);
 
 	UFTSocket& operator = (UFTSocket&&) = delete;
 
 private:
+	// @return number of bytes received
+	// @return 0 on connection closed
+	// @return -1 if would block
+	// @return -2 on api error
+	std::int32_t ReadPacket(OPCodes opcode, ByteBuffer& buffer, bool block);
+
+	// @return number of bytes received
+	// @return 0 on connection closed
+	// @return -1 if would block
+	// @return -2 on api error
+	std::int32_t ReadNextPacket(PacketHeader& header, ByteBuffer& buffer, bool block);
+
 	// @return number of bytes sent
 	// @return -1 if would block
 	// @return 0 on connection closed
@@ -137,7 +225,7 @@ private:
 		{
 			std::int32_t bytesSent;
 
-			if ((bytesSent = Send(&((const char*)lpBuffer)[i], size - i)) == 0)
+			if (!IsConnected() || ((bytesSent = Send(&((const char*)lpBuffer)[i], size - i)) == 0))
 			{
 
 				return 0;
@@ -163,7 +251,7 @@ private:
 
 		for (std::uint32_t i = 0; i < size; )
 		{
-			if ((bytesRead = Receive(&((char*)lpBuffer)[i], size - i)) == 0)
+			if (!IsConnected() || ((bytesRead = Receive(&((char*)lpBuffer)[i], size - i)) == 0))
 			{
 
 				return 0;
@@ -188,7 +276,7 @@ private:
 	{
 		std::int32_t bytesRead;
 
-		if ((bytesRead = Receive(lpBuffer, size)) == 0)
+		if (!IsConnected() || ((bytesRead = Receive(lpBuffer, size)) == 0))
 		{
 
 			return 0;
@@ -202,7 +290,7 @@ private:
 
 		for (std::uint32_t i = bytesRead; i < size; )
 		{
-			if ((bytesRead = Receive(&((char*)lpBuffer)[i], size - i)) == 0)
+			if (!IsConnected() || ((bytesRead = Receive(&((char*)lpBuffer)[i], size - i)) == 0))
 			{
 
 				return 0;
@@ -233,6 +321,10 @@ private:
 	// @return 0 on error
 	// @return -1 if not found
 	static int GetFileInfo(const char* path, FileInfo& info);
+
+	// @return 0 on error
+	// @return -1 if not found
+	static int GetFilesInPath(const char* path, UFTSocket_FileInfoList& files);
 
 	static void WriteError(const char* message);
 
