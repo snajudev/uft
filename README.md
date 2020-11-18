@@ -34,20 +34,17 @@ make uft_server
 ##### Get file list
 ```bash
 ./uft_client --remote-host=127.0.0.1 --remote-port=9000 --command=file_list --path={path}
+./uft_client --remote-host=127.0.0.1 --remote-port=9000 --timeout={seconds} --command=file_list --path={path}
 ```
 ##### Send file
 ```bash
 ./uft_client --remote-host=127.0.0.1 --remote-port=9000 --command=send --source={source} --destination={destination}
 ./uft_client --remote-host=127.0.0.1 --remote-port=9000 --timeout={seconds} --command=send --source={source} --destination={destination}
-./uft_client --remote-host=127.0.0.1 --remote-port=9000 --auth-username={username} --auth-password={password} --command=send --source={source} --destination={destination}
-./uft_client --remote-host=127.0.0.1 --remote-port=9000 --auth-username={username} --auth-password={password} --timeout={seconds} --command=send --source={source} --destination={destination}
 ```
 ##### Receive file
 ```bash
 ./uft_client --remote-host=127.0.0.1 --remote-port=9000 --command=receive --source={source} --destination={destination}
 ./uft_client --remote-host=127.0.0.1 --remote-port=9000 --timeout={seconds} --command=receive --source={source} --destination={destination}
-./uft_client --remote-host=127.0.0.1 --remote-port=9000 --auth-username={username} --auth-password={password} --command=receive --source={source} --destination={destination}
-./uft_client --remote-host=127.0.0.1 --remote-port=9000 --auth-username={username} --auth-password={password} --timeout={seconds} --command=receive --source={source} --destination={destination}
 ```
 
 #
