@@ -13,16 +13,16 @@
 void main_show_cli_usage(const char* arg0)
 {
 	std::cout << "Example usage for " << arg0 << std::endl;
-	std::cout << arg0 << " --remote-host=127.0.0.1 --remote-port=9000 --command=send --source={source} --destination={destination}" << std::endl;
-	std::cout << arg0 << " --remote-host=127.0.0.1 --remote-port=9000 --timeout={seconds} --command=send --source={source} --destination={destination}" << std::endl;
-//	std::cout << arg0 << " --remote-host=127.0.0.1 --remote-port=9000 --auth-username={username} --auth-password={password} --command=send --source={source} --destination={destination}" << std::endl;
-//	std::cout << arg0 << " --remote-host=127.0.0.1 --remote-port=9000 --auth-username={username} --auth-password={password} --timeout={seconds} --command=send --source={source} --destination={destination}" << std::endl;
-	std::cout << arg0 << " --remote-host=127.0.0.1 --remote-port=9000 --command=receive --source={source} --destination={destination}" << std::endl;
-	std::cout << arg0 << " --remote-host=127.0.0.1 --remote-port=9000 --timeout={seconds} --command=receive --source={source} --destination={destination}" << std::endl;
-//	std::cout << arg0 << " --remote-host=127.0.0.1 --remote-port=9000 --auth-username={username} --auth-password={password} --command=receive --source={source} --destination={destination}" << std::endl;
-//	std::cout << arg0 << " --remote-host=127.0.0.1 --remote-port=9000 --auth-username={username} --auth-password={password} --timeout={seconds} --command=receive --source={source} --destination={destination}" << std::endl;
-	std::cout << arg0 << " --remote-host=127.0.0.1 --remote-port=9000 --command=file_list --path={path}" << std::endl;
-	std::cout << arg0 << " --remote-host=127.0.0.1 --remote-port=9000 --timeout={seconds} --command=file_list --path={path}" << std::endl;
+	std::cout << arg0 << " --remote-host=127.0.0.1 --remote-port=9000 --command=send --source=\"{source}\" --destination=\"{destination}\"" << std::endl;
+	std::cout << arg0 << " --remote-host=127.0.0.1 --remote-port=9000 --timeout={seconds} --command=send --source=\"{source}\" --destination=\"{destination}\"" << std::endl;
+//	std::cout << arg0 << " --remote-host=127.0.0.1 --remote-port=9000 --auth-username={username} --command=send --source=\"{source}\" --destination=\"{destination}\"" << std::endl;
+//	std::cout << arg0 << " --remote-host=127.0.0.1 --remote-port=9000 --auth-username={username} --timeout={seconds} --command=send --source=\"{source}\" --destination=\"{destination}\"" << std::endl;
+	std::cout << arg0 << " --remote-host=127.0.0.1 --remote-port=9000 --command=receive --source=\"{source}\" --destination=\"{destination}\"" << std::endl;
+	std::cout << arg0 << " --remote-host=127.0.0.1 --remote-port=9000 --timeout={seconds} --command=receive --source=\"{source}\" --destination=\"{destination}\"" << std::endl;
+//	std::cout << arg0 << " --remote-host=127.0.0.1 --remote-port=9000 --auth-username={username} --command=receive --source=\"{source}\" --destination=\"{destination}\"" << std::endl;
+//	std::cout << arg0 << " --remote-host=127.0.0.1 --remote-port=9000 --auth-username={username} --timeout={seconds} --command=receive --source=\"{source}\" --destination=\"{destination}\"" << std::endl;
+	std::cout << arg0 << " --remote-host=127.0.0.1 --remote-port=9000 --command=file_list --path=\"{path}\"" << std::endl;
+	std::cout << arg0 << " --remote-host=127.0.0.1 --remote-port=9000 --timeout={seconds} --command=file_list --path=\"{path}\"" << std::endl;
 }
 
 void main_on_arg_not_found(const std::string& arg)
