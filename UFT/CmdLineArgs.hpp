@@ -21,7 +21,7 @@ class CmdLineArgs
 public:
 	explicit CmdLineArgs(int argc, char* argv[])
 	{
-		for (int i = 0; i < argc; ++i)
+		for (int i = 1; i < argc; ++i)
 		{
 			auto arg = argv[i];
 			
