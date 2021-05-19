@@ -795,7 +795,7 @@ private:
 		UFTSESSION_ERROR_CODES errorCode;
 
 		// Check if remote file does not exist or remote is larger than local - transmit file
-		if (((remoteFileInfo.Size == 0) && (remoteFileInfo.Timestamp == 0)) || (remoteFileInfo.Size > localFileInfo.Size))
+		if (true || ((remoteFileInfo.Size == 0) && (remoteFileInfo.Timestamp == 0)) || (remoteFileInfo.Size > localFileInfo.Size))
 		{
 			std::ifstream fStream(
 				localFileInfo.Path.Buffer,
@@ -940,7 +940,7 @@ private:
 		UFTSESSION_ERROR_CODES errorCode;
 
 		// Check if local file does not exist or local is larger than remote - receive file
-		if (((localFileInfo.Size == 0) && (localFileInfo.Timestamp == 0)) || (localFileInfo.Size > remoteFileInfo.Size))
+		if (true || ((localFileInfo.Size == 0) && (localFileInfo.Timestamp == 0)) || (localFileInfo.Size > remoteFileInfo.Size))
 		{
 			std::ofstream fStream(
 				localFileInfo.Path.Buffer,
@@ -968,6 +968,10 @@ private:
 			{
 				// TODO: compare offset
 
+				fStream.seekp(
+					static_cast<std::streampos>(_offset)
+				);
+
 				fStream.write(
 					reinterpret_cast<const char*>(&_buffer[0]),
 					static_cast<std::streamsize>(_size)
@@ -978,10 +982,6 @@ private:
 
 			for (std::uint64_t fileOffset = 0; fileOffset < remoteFileInfo.Size; )
 			{
-				fStream.seekp(
-					static_cast<std::streampos>(fileOffset)
-				);
-
 				if ((errorCode = ReceiveFileChunk(compressedFileChunkBuffer, fileChunkBuffer, fileChunkBufferOffset, fileChunkBufferSize, onReceiveFileChunk)) != UFTSESSION_ERROR_CODE_SUCCESS)
 				{
 
@@ -1007,7 +1007,7 @@ private:
 		{
 			std::fstream fStream(
 				localFileInfo.Path.Buffer,
-				std::ios::binary | std::ios::in | std::ios::out
+				std::ios::binary | std::ios::in | std::ios::out | std::ios::ate
 			);
 
 			if (!fStream.is_open())
@@ -1032,6 +1032,10 @@ private:
 			auto onReceiveFileChunk = [&fStream](const FileChunkBuffer& _buffer, std::uint64_t _offset, std::uint64_t _size)
 			{
 				// TODO: compare offset
+
+				fStream.seekp(
+					static_cast<std::streampos>(_offset)
+				);
 
 				fStream.write(
 					reinterpret_cast<const char*>(&_buffer[0]),
@@ -1075,7 +1079,7 @@ private:
 
 				if (localFileChunkHash != remoteFileChunkHash)
 				{
-					if ((errorCode = ReceiveFileChunk(compressedFileChunkBuffer, fileChunkBuffer, remoteFileChunkOffset, fileChunkBufferSize, onReceiveFileChunk)) != UFTSESSION_ERROR_CODE_SUCCESS)
+					if ((errorCode = ReceiveFileChunk(compressedFileChunkBuffer, fileChunkBuffer, fileOffset, fileChunkBufferSize, onReceiveFileChunk)) != UFTSESSION_ERROR_CODE_SUCCESS)
 					{
 
 						return errorCode;
