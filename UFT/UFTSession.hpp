@@ -745,6 +745,7 @@ private:
 			switch (direction)
 			{
 				case TransmitFileDirections::Up:
+					localFileInfo.Path.Assign(remoteFileInfoLocalPath.Path.Buffer);
 					break;
 
 				case TransmitFileDirections::Down:
