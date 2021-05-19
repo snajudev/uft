@@ -118,6 +118,10 @@ typedef void(*UFTSession_OnReceiveProgress)(std::uint64_t bytesReceived, std::ui
 		buffer.SetOffsetW(sizeof(OPCodes)); \
 		buffer.Write(static_cast<decltype(PacketHeader::PayloadSize)>(bufferSize - sizeof(PacketHeader))); \
 		buffer.SetOffsetW(bufferSize); \
+		/*auto header = *reinterpret_cast<const PacketHeader*>(buffer.GetBuffer());*/ \
+		/*auto header_OPCode = BitConverter::NetworkToHost(header.OPCode);*/ \
+		/*auto header_PayloadSize = BitConverter::NetworkToHost(header.PayloadSize);*/ \
+		/*printf("Sent PacketHeader { OPCode: %u, PayloadSize: %llu }\n", header_OPCode, header_PayloadSize);*/ \
 		return GetSocket().SendAll(buffer.GetBuffer(), bufferSize); \
 	}()
 
@@ -171,9 +175,9 @@ static std::string UFTSESSION_ERROR_CODES_ToString(UFTSESSION_ERROR_CODES errorC
 
 class UFTSession
 {
-	static constexpr std::uint64_t FILE_CHUNK_SIZE = 10 * (1024 * 1024); // 10MB
-
-	static constexpr std::int32_t  FILE_COMPRESSION_LEVEL = Z_BEST_SPEED;
+	static constexpr std::size_t  FILE_CHUNK_SIZE              = 1 * (1024 * 1024);  // 1MB
+	static constexpr std::size_t  FILE_CHUNK_SIZE_COMPRESSED   = FILE_CHUNK_SIZE * 2; // 2MB
+	static constexpr std::int32_t FILE_CHUNK_COMPRESSION_LEVEL = Z_BEST_SPEED;
 
 	enum class OPCodes : std::uint8_t
 	{
@@ -736,7 +740,7 @@ private:
 		return UFTSESSION_ERROR_CODE_NETWORK_API_ERROR;
 	}
 
-	UFTSESSION_ERROR_CODES TransmitFile2(const FileInfo& remoteFileInfoLocalPath, TransmitFileDirections direction)
+	UFTSESSION_ERROR_CODES TransmitFile2(FileInfo& remoteFileInfoLocalPath, TransmitFileDirections direction)
 	{
 		FileInfo localFileInfo;
 
@@ -791,12 +795,12 @@ private:
 	}
 
 	template<typename F_ON_PROGRESS>
-	UFTSESSION_ERROR_CODES SendFileChunks(const FileInfo& localFileInfo, const FileInfo& remoteFileInfo, F_ON_PROGRESS onProgress, void* lpParam)
+	UFTSESSION_ERROR_CODES SendFileChunks(const FileInfo& localFileInfo, FileInfo& remoteFileInfo, F_ON_PROGRESS onProgress, void* lpParam)
 	{
 		UFTSESSION_ERROR_CODES errorCode;
 
 		// Check if remote file does not exist or remote is larger than local - transmit file
-		if (true || ((remoteFileInfo.Size == 0) && (remoteFileInfo.Timestamp == 0)) || (remoteFileInfo.Size > localFileInfo.Size))
+		if (((remoteFileInfo.Size == 0) && (remoteFileInfo.Timestamp == 0)) || (remoteFileInfo.Size > localFileInfo.Size))
 		{
 			std::ifstream fStream(
 				localFileInfo.Path.Buffer,
@@ -810,11 +814,11 @@ private:
 			}
 
 			FileChunkBuffer fileChunkBuffer(
-				static_cast<std::size_t>(FILE_CHUNK_SIZE)
+				FILE_CHUNK_SIZE
 			);
 
 			FileChunkBuffer compressedFileChunkBuffer(
-				static_cast<std::size_t>(FILE_CHUNK_SIZE * 2)
+				FILE_CHUNK_SIZE_COMPRESSED
 			);
 
 			for (std::uint64_t fileOffset = 0; fileOffset < localFileInfo.Size; )
@@ -865,66 +869,103 @@ private:
 			}
 
 			FileChunkBuffer fileChunkBuffer(
-				static_cast<std::size_t>(FILE_CHUNK_SIZE)
+				FILE_CHUNK_SIZE
 			);
 
 			FileChunkBuffer compressedFileChunkBuffer(
-				static_cast<std::size_t>(FILE_CHUNK_SIZE * 2)
+				FILE_CHUNK_SIZE_COMPRESSED
 			);
 
+			std::uint64_t localFileOffset = 0;
+			std::uint64_t localFileChunkSize;
 			FileChunkHash localFileChunkHash;
-			FileChunkHash remoteFileChunkHash;
+			
+			std::uint64_t remoteFileOffset;
 			std::uint64_t remoteFileChunkSize;
-			std::uint64_t remoteFileChunkOffset;
+			FileChunkHash remoteFileChunkHash;
 
-			for (std::uint64_t fileOffset = 0; fileOffset < localFileInfo.Size; )
+			// Compare to end of remote file - replace on mismatch
+			while (localFileOffset < remoteFileInfo.Size)
 			{
-				fStream.seekg(
-					static_cast<std::streampos>(fileOffset)
-				);
-
 				fStream.read(
 					reinterpret_cast<char*>(&fileChunkBuffer[0]),
 					fileChunkBuffer.size()
 				);
 
-				std::uint64_t fileChunkBufferSize = fStream.gcount();
+				localFileChunkSize = fStream.gcount();
 
-				if ((errorCode = SendFileChunkHash(localFileChunkHash, fileChunkBuffer, fileOffset, fileChunkBufferSize)) != UFTSESSION_ERROR_CODE_SUCCESS)
+				if ((errorCode = SendFileChunkHash(localFileChunkHash, fileChunkBuffer, localFileOffset, localFileChunkSize)) != UFTSESSION_ERROR_CODE_SUCCESS)
 				{
 
 					return errorCode;
 				}
 
-				if ((errorCode = ReceiveFileChunkHash(remoteFileChunkHash, remoteFileChunkOffset, remoteFileChunkSize)) != UFTSESSION_ERROR_CODE_SUCCESS)
+				if ((errorCode = ReceiveFileChunkHash(remoteFileChunkHash, remoteFileOffset, remoteFileChunkSize)) != UFTSESSION_ERROR_CODE_SUCCESS)
 				{
 
 					return errorCode;
 				}
 
-				if (fileOffset != remoteFileChunkOffset)
+				if (localFileOffset != remoteFileOffset)
 				{
 					Disconnect();
 
 					return UFTSESSION_ERROR_CODE_NETWORK_API_ERROR;
 				}
 
-				if (localFileChunkHash != remoteFileChunkHash)
+				if ((localFileChunkSize != remoteFileChunkSize) || (localFileChunkHash != remoteFileChunkHash))
 				{
-					if ((errorCode = SendFileChunk(compressedFileChunkBuffer, fileChunkBuffer, fileOffset, fileChunkBufferSize)) != UFTSESSION_ERROR_CODE_SUCCESS)
+//					printf("Sending %llu bytes to offset %llu\n", localFileChunkSize, localFileOffset);
+
+					if ((errorCode = SendFileChunk(compressedFileChunkBuffer, fileChunkBuffer, localFileOffset, localFileChunkSize)) != UFTSESSION_ERROR_CODE_SUCCESS)
 					{
 
 						return errorCode;
 					}
+
+					if (localFileChunkSize > remoteFileChunkSize)
+					{
+
+						remoteFileInfo.Size += (localFileChunkSize - remoteFileChunkSize);
+					}
 				}
 
-				fileOffset += fileChunkBufferSize;
+				localFileOffset += localFileChunkSize;
 
 				if constexpr (!std::is_same<F_ON_PROGRESS, std::nullptr_t>::value)
 				{
 
 					onProgress(
-						fileOffset,
+						localFileOffset,
+						localFileInfo.Size,
+						lpParam
+					);
+				}
+			}
+
+			// Send remaining chunks, if any
+			while (localFileOffset < localFileInfo.Size)
+			{
+				fStream.read(
+					reinterpret_cast<char*>(&fileChunkBuffer[0]),
+					fileChunkBuffer.size()
+				);
+
+				localFileChunkSize = fStream.gcount();
+
+				if ((errorCode = SendFileChunk(compressedFileChunkBuffer, fileChunkBuffer, localFileOffset, localFileChunkSize)) != UFTSESSION_ERROR_CODE_SUCCESS)
+				{
+
+					return errorCode;
+				}
+
+				localFileOffset += localFileChunkSize;
+
+				if constexpr (!std::is_same<F_ON_PROGRESS, std::nullptr_t>::value)
+				{
+
+					onProgress(
+						localFileOffset,
 						localFileInfo.Size,
 						lpParam
 					);
@@ -936,12 +977,12 @@ private:
 	}
 
 	template<typename F_ON_PROGRESS>
-	UFTSESSION_ERROR_CODES ReceiveFileChunks(const FileInfo& localFileInfo, const FileInfo& remoteFileInfo, F_ON_PROGRESS onProgress, void* lpParam)
+	UFTSESSION_ERROR_CODES ReceiveFileChunks(FileInfo& localFileInfo, const FileInfo& remoteFileInfo, F_ON_PROGRESS onProgress, void* lpParam)
 	{
 		UFTSESSION_ERROR_CODES errorCode;
 
 		// Check if local file does not exist or local is larger than remote - receive file
-		if (true || ((localFileInfo.Size == 0) && (localFileInfo.Timestamp == 0)) || (localFileInfo.Size > remoteFileInfo.Size))
+		if (((localFileInfo.Size == 0) && (localFileInfo.Timestamp == 0)) || (localFileInfo.Size > remoteFileInfo.Size))
 		{
 			std::ofstream fStream(
 				localFileInfo.Path.Buffer,
@@ -955,11 +996,11 @@ private:
 			}
 
 			FileChunkBuffer fileChunkBuffer(
-				static_cast<std::size_t>(FILE_CHUNK_SIZE)
+				FILE_CHUNK_SIZE
 			);
 
 			FileChunkBuffer compressedFileChunkBuffer(
-				static_cast<std::size_t>(FILE_CHUNK_SIZE * 2)
+				FILE_CHUNK_SIZE_COMPRESSED
 			);
 
 			std::uint64_t fileChunkBufferSize;
@@ -1008,7 +1049,7 @@ private:
 		{
 			std::fstream fStream(
 				localFileInfo.Path.Buffer,
-				std::ios::binary | std::ios::in | std::ios::out | std::ios::ate
+				std::ios::binary | std::ios::in | std::ios::out
 			);
 
 			if (!fStream.is_open())
@@ -1018,21 +1059,28 @@ private:
 			}
 
 			FileChunkBuffer fileChunkBuffer(
-				static_cast<std::size_t>(FILE_CHUNK_SIZE)
+				FILE_CHUNK_SIZE
 			);
 
 			FileChunkBuffer compressedFileChunkBuffer(
-				static_cast<std::size_t>(FILE_CHUNK_SIZE * 2)
+				FILE_CHUNK_SIZE_COMPRESSED
 			);
 
+			std::uint64_t localFileOffset = 0;
+			std::uint64_t localFileChunkSize;
 			FileChunkHash localFileChunkHash;
-			FileChunkHash remoteFileChunkHash;
+
+			std::uint64_t remoteFileOffset;
 			std::uint64_t remoteFileChunkSize;
-			std::uint64_t remoteFileChunkOffset;
+			FileChunkHash remoteFileChunkHash;
 
 			auto onReceiveFileChunk = [&fStream](const FileChunkBuffer& _buffer, std::uint64_t _offset, std::uint64_t _size)
 			{
+//				printf("Received %llu bytes for offset %llu\n", _size, _offset);
+
 				// TODO: compare offset
+
+				fStream.clear();
 
 				fStream.seekp(
 					static_cast<std::streampos>(_offset)
@@ -1043,13 +1091,14 @@ private:
 					static_cast<std::streamsize>(_size)
 				);
 
-				return true;
+				return fStream.good();
 			};
 
-			for (std::uint64_t fileOffset = 0; fileOffset < remoteFileInfo.Size; )
+			// Compare to end of local file - replace on mismatch
+			while (localFileOffset < localFileInfo.Size)
 			{
 				fStream.seekg(
-					static_cast<std::streampos>(fileOffset)
+					static_cast<std::streampos>(localFileOffset)
 				);
 
 				fStream.read(
@@ -1057,43 +1106,71 @@ private:
 					fileChunkBuffer.size()
 				);
 
-				std::uint64_t fileChunkBufferSize = fStream.gcount();
+				localFileChunkSize = fStream.gcount();
 
-				if ((errorCode = ReceiveFileChunkHash(remoteFileChunkHash, remoteFileChunkOffset, remoteFileChunkSize)) != UFTSESSION_ERROR_CODE_SUCCESS)
+				if ((errorCode = ReceiveFileChunkHash(remoteFileChunkHash, remoteFileOffset, remoteFileChunkSize)) != UFTSESSION_ERROR_CODE_SUCCESS)
 				{
 
 					return errorCode;
 				}
 
-				if ((errorCode = SendFileChunkHash(localFileChunkHash, fileChunkBuffer, fileOffset, fileChunkBufferSize)) != UFTSESSION_ERROR_CODE_SUCCESS)
+				if ((errorCode = SendFileChunkHash(localFileChunkHash, fileChunkBuffer, localFileOffset, localFileChunkSize)) != UFTSESSION_ERROR_CODE_SUCCESS)
 				{
 
 					return errorCode;
 				}
 
-				if (fileOffset != remoteFileChunkOffset)
+				if (localFileOffset != remoteFileOffset)
 				{
 					Disconnect();
 
 					return UFTSESSION_ERROR_CODE_NETWORK_API_ERROR;
 				}
 
-				if (localFileChunkHash != remoteFileChunkHash)
+				if ((localFileChunkSize != remoteFileChunkSize) || (localFileChunkHash != remoteFileChunkHash))
 				{
-					if ((errorCode = ReceiveFileChunk(compressedFileChunkBuffer, fileChunkBuffer, fileOffset, fileChunkBufferSize, onReceiveFileChunk)) != UFTSESSION_ERROR_CODE_SUCCESS)
+					if ((errorCode = ReceiveFileChunk(compressedFileChunkBuffer, fileChunkBuffer, remoteFileOffset, remoteFileChunkSize, onReceiveFileChunk)) != UFTSESSION_ERROR_CODE_SUCCESS)
 					{
 
 						return errorCode;
 					}
+
+					if (remoteFileChunkSize > localFileChunkSize)
+					{
+
+						localFileInfo.Size += (remoteFileChunkSize - localFileChunkSize);
+					}
 				}
 
-				fileOffset += fileChunkBufferSize;
+				localFileOffset += remoteFileChunkSize;
 
 				if constexpr (!std::is_same<F_ON_PROGRESS, std::nullptr_t>::value)
 				{
 
 					onProgress(
-						fileOffset,
+						localFileOffset,
+						remoteFileInfo.Size,
+						lpParam
+					);
+				}
+			}
+
+			// Receive remaining chunks, if any
+			while (localFileOffset < remoteFileInfo.Size)
+			{
+				if ((errorCode = ReceiveFileChunk(compressedFileChunkBuffer, fileChunkBuffer, remoteFileOffset, remoteFileChunkSize, onReceiveFileChunk)) != UFTSESSION_ERROR_CODE_SUCCESS)
+				{
+
+					return errorCode;
+				}
+
+				localFileOffset += remoteFileChunkSize;
+
+				if constexpr (!std::is_same<F_ON_PROGRESS, std::nullptr_t>::value)
+				{
+
+					onProgress(
+						localFileOffset,
 						remoteFileInfo.Size,
 						lpParam
 					);
@@ -1385,6 +1462,8 @@ private:
 			header.PayloadSize
 		);
 
+//		printf("Received PacketHeader { OPCode: %u, PayloadSize: %llu }\n", header.OPCode, header.PayloadSize);
+
 		switch (header.OPCode)
 		{
 			case OPCodes::GetFileList:
@@ -1603,7 +1682,7 @@ private:
 	static std::uint64_t CompressFileChunk(FileChunkBuffer& buffer, const FileChunkBuffer& source, std::uint64_t size)
 	{
 		z_stream stream = { 0 };
-		deflateInit(&stream, FILE_COMPRESSION_LEVEL);
+		deflateInit(&stream, FILE_CHUNK_COMPRESSION_LEVEL);
 
 		stream.next_in = const_cast<Bytef*>(
 			reinterpret_cast<const Bytef*>(
