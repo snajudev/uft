@@ -5,11 +5,11 @@
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">
     <DebuggerFlavor>WindowsLocalDebugger</DebuggerFlavor>
-    <LocalDebuggerCommandArguments>--local-host=127.0.0.1 --local-port=9000 --timeout=60</LocalDebuggerCommandArguments>
+    <LocalDebuggerCommandArguments>--local-host=127.0.0.1 --local-port=9000 --timeout=5</LocalDebuggerCommandArguments>
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">
     <DebuggerFlavor>WindowsLocalDebugger</DebuggerFlavor>
-    <LocalDebuggerCommandArguments>--local-host=127.0.0.1 --local-port=9000 --timeout=60</LocalDebuggerCommandArguments>
+    <LocalDebuggerCommandArguments>--local-host=127.0.0.1 --local-port=9000 --timeout=5</LocalDebuggerCommandArguments>
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">
     <DebuggerFlavor>WindowsLocalDebugger</DebuggerFlavor>
