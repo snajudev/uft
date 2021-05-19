@@ -4,7 +4,7 @@
 #
 #### What is UFT?
 UFT is a UDP based file transfer protocol built on top of UDT.
-It was designed for transferring files quickly and effeciently, even if a connection is broken, while being light enough to run on a single board computer.
+It was designed for transferring files quickly and effeciently while being light enough to run on a single board computer.
 
 #
 #### How does UFT work?
@@ -12,12 +12,7 @@ UFT works with the concept of two devices, one client and one server.
 File transfers are initiated by sending the file size, timestamp and destination path.
 If the file exists on the receiving end then the size is compared to the sender's.
 If the receiver's file size is greater than the sender's then the file is deleted and transferred one chunk at a time.
-If the receiver's file size is less than or equal to the sender's then the file is read in chunks and a hash is compared against the sender. Chunks are transmitted when invalid and/or missing.
-
-#
-#### What does UFT depend on?
-* [UDT](https://udt.sourceforge.io/)
-* [ZLIB](https://zlib.net/)
+If the receiver's file size is less than or equal to the sender's then the file is read in chunks and a hash is compared against the sender. Chunks are transmitted when invalid or missing.
 
 #
 #### How do I use UFT?
@@ -28,24 +23,25 @@ make uft_server
 ```
 ##### Run server
 ```bash
-./uft_server --local-host=127.0.0.1 --local-port=9000
 ./uft_server --local-host=127.0.0.1 --local-port=9000 --timeout={seconds}
 ```
 ##### Get file list
 ```bash
-./uft_client --remote-host=127.0.0.1 --remote-port=9000 --command=file_list --path="{path}"
-./uft_client --remote-host=127.0.0.1 --remote-port=9000 --timeout={seconds} --command=file_list --path="{path}"
+./uft_client --remote-host=127.0.0.1 --remote-port=9000 --command=get_file_list --path="{path}" --timeout={seconds}
 ```
 ##### Send file
 ```bash
-./uft_client --remote-host=127.0.0.1 --remote-port=9000 --command=send --source="{source}" --destination="{destination}"
-./uft_client --remote-host=127.0.0.1 --remote-port=9000 --timeout={seconds} --command=send --source="{source}" --destination="{destination}"
+./uft_client --remote-host=127.0.0.1 --remote-port=9000 --command=send_file --source="{source}" --destination="{destination}" --timeout={seconds}
 ```
 ##### Receive file
 ```bash
-./uft_client --remote-host=127.0.0.1 --remote-port=9000 --command=receive --source="{source}" --destination="{destination}"
-./uft_client --remote-host=127.0.0.1 --remote-port=9000 --timeout={seconds} --command=receive --source="{source}" --destination="{destination}"
+./uft_client --remote-host=127.0.0.1 --remote-port=9000 --command=receive_file --source="{source}" --destination="{destination}" --timeout={seconds}
 ```
+
+#
+#### What does UFT depend on?
+* [UDT](https://udt.sourceforge.io/)
+* [ZLIB](https://zlib.net/)
 
 #
 #### How do I build dependencies?

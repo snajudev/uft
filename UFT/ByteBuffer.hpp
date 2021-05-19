@@ -9,7 +9,6 @@
 #include "BitConverter.hpp"
 
 #include <limits>
-#include <string>
 #include <vector>
 #include <cstdint>
 #include <cstring>
@@ -113,33 +112,9 @@ public:
 		);
 	}
 	template<typename T>
-	bool Read(std::string& value)
-	{
-		T valueLength;
-
-		if (!Read<T>(valueLength))
-		{
-
-			return false;
-		}
-
-		if ((offset_r + (valueLength * sizeof(typename std::string::value_type))) > GetSize())
-		{
-			offset_r -= sizeof(T);
-
-			return false;
-		}
-
-		value.resize(valueLength);
-		std::memcpy(&value[0], &buffer[offset_r], valueLength);
-		offset_r += valueLength * sizeof(typename std::string::value_type);
-
-		return true;
-	}
-	template<typename T>
 	typename std::enable_if<is_enum<T>::Value || is_integer_or_decimal<T>::Value, bool>::type Read(T& value)
 	{
-		if ((offset_r + sizeof(T)) > GetSize())
+		if ((offset_r + sizeof(T)) > GetCapacity())
 		{
 
 			return false;
@@ -155,8 +130,9 @@ public:
 	}
 	bool Read(void* lpBuffer, std::size_t size)
 	{
-		if ((offset_r + size) > GetSize())
+		if ((offset_r + size) > GetCapacity())
 		{
+//			printf("[%s] EOF\n", __FUNCTION__);
 
 			return false;
 		}
@@ -180,26 +156,6 @@ public:
 		);
 	}
 	template<typename T>
-	bool Write(const std::string& value)
-	{
-		auto valueLength = static_cast<T>(
-			value.length()
-		);
-
-		if ((offset_w + sizeof(T) + (valueLength * sizeof(typename std::string::value_type))) > GetCapacity())
-		{
-
-			return false;
-		}
-
-		Write<T>(valueLength);
-
-		std::memcpy(&buffer[offset_w], value.c_str(), valueLength);
-		offset_w += sizeof(typename std::string::value_type) * valueLength;
-
-		return true;
-	}
-	template<typename T>
 	typename std::enable_if<is_enum<T>::Value || is_integer_or_decimal<T>::Value, bool>::type Write(T value)
 	{
 		if ((offset_w + sizeof(T)) > GetCapacity())
@@ -220,6 +176,7 @@ public:
 	{
 		if ((offset_w + size) > GetCapacity())
 		{
+//			printf("[%s] EOF\n", __FUNCTION__);
 
 			return false;
 		}

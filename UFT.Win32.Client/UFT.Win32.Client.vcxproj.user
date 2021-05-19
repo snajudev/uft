@@ -5,11 +5,11 @@
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">
     <DebuggerFlavor>WindowsLocalDebugger</DebuggerFlavor>
-    <LocalDebuggerCommandArguments>--remote-host=127.0.0.1 --remote-port=9000 --command=receive --source="A:/test.txt" --destination="A:/test_2.txt"</LocalDebuggerCommandArguments>
+    <LocalDebuggerCommandArguments>--remote-host=127.0.0.1 --remote-port=9000 --command=receive_file --source="/mnt/a/RCT2.iso" --destination="A:/RCT2_2.iso" --timeout=60</LocalDebuggerCommandArguments>
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">
     <DebuggerFlavor>WindowsLocalDebugger</DebuggerFlavor>
-    <LocalDebuggerCommandArguments>--remote-host=127.0.0.1 --remote-port=9000 --command=receive --source="A:/test.txt" --destination="A:/test_2.txt"</LocalDebuggerCommandArguments>
+    <LocalDebuggerCommandArguments>--remote-host=127.0.0.1 --remote-port=9000 --command=receive_file --source="/mnt/a/RCT2.iso" --destination="A:/RCT2_2.iso" --timeout=60</LocalDebuggerCommandArguments>
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">
     <DebuggerFlavor>WindowsLocalDebugger</DebuggerFlavor>

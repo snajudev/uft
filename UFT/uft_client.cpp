@@ -1,33 +1,35 @@
-#include "UFTSocket.hpp"
+#include "UFTClient.hpp"
 #include "CmdLineArgs.hpp"
 
+#include <cstdio>
 #include <string>
-#include <iostream>
 
 #if !defined(WIN32)
 	#include <arpa/inet.h>
 #else
 	#include <WS2tcpip.h>
+
+	#pragma comment(lib, "Ws2_32.lib")
 #endif
+
+template<typename ... TArgs>
+inline void Console_WriteLine(const char* format, TArgs ... args)
+{
+	printf(format, args ...);
+	printf("\n");
+}
 
 void main_show_cli_usage(const char* arg0)
 {
-	std::cout << "Example usage for " << arg0 << std::endl;
-	std::cout << arg0 << " --remote-host=127.0.0.1 --remote-port=9000 --command=send --source=\"{source}\" --destination=\"{destination}\"" << std::endl;
-	std::cout << arg0 << " --remote-host=127.0.0.1 --remote-port=9000 --timeout={seconds} --command=send --source=\"{source}\" --destination=\"{destination}\"" << std::endl;
-//	std::cout << arg0 << " --remote-host=127.0.0.1 --remote-port=9000 --auth-username={username} --command=send --source=\"{source}\" --destination=\"{destination}\"" << std::endl;
-//	std::cout << arg0 << " --remote-host=127.0.0.1 --remote-port=9000 --auth-username={username} --timeout={seconds} --command=send --source=\"{source}\" --destination=\"{destination}\"" << std::endl;
-	std::cout << arg0 << " --remote-host=127.0.0.1 --remote-port=9000 --command=receive --source=\"{source}\" --destination=\"{destination}\"" << std::endl;
-	std::cout << arg0 << " --remote-host=127.0.0.1 --remote-port=9000 --timeout={seconds} --command=receive --source=\"{source}\" --destination=\"{destination}\"" << std::endl;
-//	std::cout << arg0 << " --remote-host=127.0.0.1 --remote-port=9000 --auth-username={username} --command=receive --source=\"{source}\" --destination=\"{destination}\"" << std::endl;
-//	std::cout << arg0 << " --remote-host=127.0.0.1 --remote-port=9000 --auth-username={username} --timeout={seconds} --command=receive --source=\"{source}\" --destination=\"{destination}\"" << std::endl;
-	std::cout << arg0 << " --remote-host=127.0.0.1 --remote-port=9000 --command=file_list --path=\"{path}\"" << std::endl;
-	std::cout << arg0 << " --remote-host=127.0.0.1 --remote-port=9000 --timeout={seconds} --command=file_list --path=\"{path}\"" << std::endl;
+	Console_WriteLine("Example usage for %s", arg0);
+	Console_WriteLine("%s --remote-host=127.0.0.1 --remote-port=9000 --command=get_file_list --path=\"{path}\" --timeout={seconds}", arg0);
+	Console_WriteLine("%s --remote-host=127.0.0.1 --remote-port=9000 --command=send_file --source=\"{source}\" --destination=\"{destination}\" --timeout={seconds}", arg0);
+	Console_WriteLine("%s --remote-host=127.0.0.1 --remote-port=9000 --command=receive_file --source=\"{source}\" --destination=\"{destination}\" --timeout={seconds}", arg0);
 }
 
 void main_on_arg_not_found(const std::string& arg)
 {
-	std::cerr << "Command line argument '" << arg << "' was not found" << std::endl;
+	Console_WriteLine("Command line argument '%s' was not found", arg.c_str());
 }
 
 int main(int argc, char* argv[])
@@ -38,28 +40,24 @@ int main(int argc, char* argv[])
 	);
 
 	std::string argRemoteHost;
-	std::uint16_t argRemotePort;
-	std::uint32_t argTimeout = 60; // optional
+	std::uint16_t argRemotePort = 9000;
 	std::string argCommand;
+	std::uint32_t argTimeout = 15 * 1000;
 	std::string argPath; // optional
 	std::string argSource; // optional
 	std::string argDestination; // optional
 
 	if (!args.TryGetValue("remote-host", argRemoteHost, main_on_arg_not_found) ||
 		!args.TryGetValue("remote-port", argRemotePort, main_on_arg_not_found) ||
-		!args.TryGetValue("command", argCommand, main_on_arg_not_found))
+		!args.TryGetValue("command", argCommand, main_on_arg_not_found) ||
+		!args.TryGetValue("timeout", argTimeout, main_on_arg_not_found))
 	{
 		main_show_cli_usage(argv[0]);
 
 		return -1;
 	}
 
-	args.TryGetValue(
-		"timeout",
-		argTimeout
-	);
-
-	if (argCommand.compare("file_list"))
+	if (argCommand.compare("get_file_list"))
 	{
 		if (!args.TryGetValue("source", argSource, main_on_arg_not_found) ||
 			!args.TryGetValue("destination", argDestination, main_on_arg_not_found))
@@ -80,109 +78,156 @@ int main(int argc, char* argv[])
 
 	if (inet_pton(AF_INET, argRemoteHost.c_str(), &addr) != 1)
 	{
-		std::cerr << "Invalid 'remote-host' format, expected IPv4" << std::endl;
+		Console_WriteLine(
+			"Invalid 'remote-host' format, expected IPv4"
+		);
 
 		return -4;
 	}
 
-	UFTSocket socket;
+	UFTClient client;
 
-	if (!socket.Open())
+	if (!client.Connect(ntohl(addr.s_addr), argRemotePort))
 	{
-		std::cerr << "Error opening UFTSocket" << std::endl;
+		Console_WriteLine(
+			"Error connecting to %s:%u",
+			argRemoteHost.c_str(),
+			argRemotePort
+		);
 
 		return -5;
 	}
 
-	if (!socket.Connect(ntohl(addr.s_addr), argRemotePort))
+	if (!client.SetTimeout(argTimeout))
 	{
-		std::cerr << "Error connecting to " << argRemoteHost << ':' << argRemotePort << std::endl;
+		Console_WriteLine(
+			"Error setting client timeout"
+		);
 
 		return -6;
 	}
 
-	std::cout << "Connected to " << argRemoteHost << ':' << argRemotePort << std::endl;
+	Console_WriteLine(
+		"Connected to %u.%u.%u.%u:%u",
+		(client.GetRemoteAddress() >> 24) & 0x000000FF,
+		(client.GetRemoteAddress() >> 16) & 0x000000FF,
+		(client.GetRemoteAddress() >> 8)  & 0x000000FF,
+		(client.GetRemoteAddress() >> 0)  & 0x000000FF,
+		client.GetRemotePort()
+	);
 
-	std::string argUsername;
-	std::string argPassword;
-
-	bool useAuthentication =
-		args.TryGetValue("auth-username", argUsername) &&
-		args.TryGetValue("auth-password", argPassword, main_on_arg_not_found); // show output if username is set and password isn't
-
-	std::cout << "Authenticating as " << (useAuthentication ? argUsername : "anonymous") << std::endl;
-
-	if (useAuthentication)
+	if (!argCommand.compare("send_file"))
 	{
+		Console_WriteLine(
+			"Sending %s to %s",
+			argSource.c_str(),
+			argDestination.c_str()
+		);
 
-		// TODO: authenticate
-	}
+		UFTSESSION_ERROR_CODES errorCode;
 
-	if (!socket.SetTimeout(argTimeout))
-	{
-
-		std::cerr << "Warning: Error setting UFTSocket timeout" << std::endl;
-	}
-
-	bool success = false;
-
-	if (!argCommand.compare("send"))
-	{
-		std::cout << "Sending " << argSource << " to " << argDestination << std::endl;
-
-		success = socket.SendFile(
+		errorCode = client.SendFile(
 			argSource.c_str(),
 			argDestination.c_str(),
-			[](UFTSocket_FileSize _bytesSent, UFTSocket_FileSize _fileSize, void* _lpParam)
+			[](std::uint64_t _bytesSent, std::uint64_t _fileSize, void* _lpParam)
 			{
-				std::cout << "Sent " << _bytesSent << '/' << _fileSize << " bytes" << std::endl;
+				Console_WriteLine(
+					"Sent %llu/%llu bytes",
+					_bytesSent,
+					_fileSize
+				);
 			},
 			nullptr
 		);
-	}
-	else if (!argCommand.compare("receive"))
-	{
-		std::cout << "Receiving " << argDestination<< " from " << argSource << std::endl;
 
-		success = socket.ReceiveFile(
+		if (errorCode != UFTSESSION_ERROR_CODE_SUCCESS)
+		{
+
+			Console_WriteLine(
+				"Error sending '%s' to '%s': %s",
+				argSource.c_str(),
+				argDestination.c_str(),
+				UFTSESSION_ERROR_CODES_ToString(errorCode).c_str()
+			);
+		}
+	}
+	else if (!argCommand.compare("receive_file"))
+	{
+		Console_WriteLine(
+			"Receiving %s from %s",
+			argDestination.c_str(),
+			argSource.c_str()
+		);
+
+		UFTSESSION_ERROR_CODES errorCode;
+
+		errorCode = client.ReceiveFile(
 			argSource.c_str(),
 			argDestination.c_str(),
-			[](UFTSocket_FileSize _bytesReceived, UFTSocket_FileSize _fileSize, void* _lpParam)
+			[](std::uint64_t _bytesReceived, std::uint64_t _fileSize, void* _lpParam)
 			{
-				std::cout << "Received " << _bytesReceived << '/' << _fileSize << " bytes" << std::endl;
+				Console_WriteLine(
+					"Received %llu/%llu bytes",
+					_bytesReceived,
+					_fileSize
+				);
 			},
 			nullptr
 		);
-	}
-	else if (!argCommand.compare("file_list"))
-	{
-		std::cout << "Retrieving file list for '" << argPath << '\'' << std::endl;
 
-		success = socket.GetFileList(
-			argPath.c_str(),
-			[](const UFTSocket_FileInfoList& _files, void* _lpParam)
-			{
-				for (auto& fileInfo : _files)
-				{
-					std::cout << '[' << fileInfo.Name << "] Size: " << fileInfo.Size << ", Timestamp: " << fileInfo.Timestamp << std::endl;
-				}
-			},
-			nullptr
+		if (errorCode != UFTSESSION_ERROR_CODE_SUCCESS)
+		{
+
+			Console_WriteLine(
+				"Error receiving '%s' from '%s': %s",
+				argDestination.c_str(),
+				argSource.c_str(),
+				UFTSESSION_ERROR_CODES_ToString(errorCode).c_str()
+			);
+		}
+	}
+	else if (!argCommand.compare("get_file_list"))
+	{
+		Console_WriteLine(
+			"Retrieving file list for '%s'",
+			argPath.c_str()
 		);
+
+		UFTSession_FileList files;
+		UFTSESSION_ERROR_CODES errorCode;
+
+		if ((errorCode = client.GetFileList(files, argPath.c_str())) == UFTSESSION_ERROR_CODE_SUCCESS)
+		{
+			for (auto& fileInfo : files)
+			{
+				Console_WriteLine(
+					"[%s] Size: %llu, Timestamp: %llu",
+					fileInfo.Path.c_str(),
+					fileInfo.Size,
+					fileInfo.Timestamp
+				);
+			}
+		}
+		else
+		{
+
+			Console_WriteLine(
+				"Error receiving file list for '%s': %s",
+				argPath.c_str(),
+				UFTSESSION_ERROR_CODES_ToString(errorCode).c_str()
+			);
+		}
 	}
 	else
 	{
-
-		std::cerr << "Invalid command '" << argCommand << '\'' << std::endl;
+		
+		Console_WriteLine(
+			"Invalid command '%s'",
+			argCommand.c_str()
+		);
 	}
 
-	if (!success)
-	{
-
-		std::cerr << "Something went wrong." << std::endl;
-	}
-
-	socket.Close();
+	client.Disconnect();
 
 	return 0;
 }

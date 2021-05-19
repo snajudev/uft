@@ -103,7 +103,7 @@
       <Optimization>Disabled</Optimization>
       <SDLCheck>true</SDLCheck>
       <ConformanceMode>true</ConformanceMode>
-      <LanguageStandard>stdcpp14</LanguageStandard>
+      <LanguageStandard>stdcpp17</LanguageStandard>
       <PreprocessorDefinitions>WIN32;UDT_EXPORTS;_MBCS;%(PreprocessorDefinitions)</PreprocessorDefinitions>
     </ClCompile>
     <Link>
@@ -131,7 +131,7 @@
       <IntrinsicFunctions>true</IntrinsicFunctions>
       <SDLCheck>true</SDLCheck>
       <ConformanceMode>true</ConformanceMode>
-      <LanguageStandard>stdcpp14</LanguageStandard>
+      <LanguageStandard>stdcpp17</LanguageStandard>
       <PreprocessorDefinitions>WIN32;UDT_EXPORTS;_MBCS;%(PreprocessorDefinitions)</PreprocessorDefinitions>
     </ClCompile>
     <Link>
@@ -191,6 +191,9 @@
     <ClInclude Include="..\udt\src\window.h" />
     <ClInclude Include="..\UFT\BitConverter.hpp" />
     <ClInclude Include="..\UFT\ByteBuffer.hpp" />
+    <ClInclude Include="..\UFT\CmdLineArgs.hpp" />
+    <ClInclude Include="..\UFT\UFTListener.hpp" />
+    <ClInclude Include="..\UFT\UFTSession.hpp" />
     <ClInclude Include="..\UFT\UFTSocket.hpp" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />

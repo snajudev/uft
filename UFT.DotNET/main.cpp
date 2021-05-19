@@ -1,4 +1,5 @@
-#include <UFTSocket.hpp>
+#include <UFTClient.hpp>
+#include <UFTListener.hpp>
 
 #include <utility>
 
@@ -6,24 +7,24 @@
 
 namespace UFT::DotNET
 {
-	public value class UFTSocket_FileInfo
+	public ref class UFTSession_FileInfo
 	{
-		System::String^ name;
+		System::String^ path;
 		System::UInt64 size;
 		System::UInt64 timestamp;
 
 	public:
-		property System::String^ Name
+		property System::String^ Path
 		{
 		public:
 			System::String^ get()
 			{
-				return name;
+				return path;
 			}
 
 			void set(System::String^ value)
 			{
-				name = value;
+				path = value;
 			}
 		}
 
@@ -55,14 +56,10 @@ namespace UFT::DotNET
 			}
 		}
 	};
+	
+	public delegate void UFTSession_OnSendProgress(System::UInt64 bytesSent, System::UInt64 fileSize, System::Object^ param);
 
-	typedef System::Collections::Generic::List<UFTSocket_FileInfo> UFTSocket_FileInfoList;
-
-	public delegate void UFTSocket_OnGetFileList(UFTSocket_FileInfoList^ files, System::Object^ param);
-
-	public delegate void UFTSocket_OnSendProgress(System::UInt64 bytesSent, System::UInt64 fileSize, System::Object^ param);
-
-	public delegate void UFTSocket_OnReceiveProgress(System::UInt64 bytesReceived, System::UInt64 fileSize, System::Object^ param);
+	public delegate void UFTSession_OnReceiveProgress(System::UInt64 bytesReceived, System::UInt64 fileSize, System::Object^ param);
 
 	struct DetourContext
 	{
@@ -70,180 +67,103 @@ namespace UFT::DotNET
 		void* lpDelegate;
 	};
 
-	void Detour_OnGetFileList(const ::UFTSocket_FileInfoList& files, void* lpParam);
+	void Detour_OnProgress_Send(std::uint64_t bytesTransferred, std::uint64_t fileSize, void* lpParam);
 
-	void Detour_OnProgress_Send(::UFTSocket_FileSize bytesTransferred, ::UFTSocket_FileSize fileSize, void* lpParam);
+	void Detour_OnProgress_Receive(std::uint64_t bytesTransferred, std::uint64_t fileSize, void* lpParam);
 
-	void Detour_OnProgress_Receive(::UFTSocket_FileSize bytesTransferred, ::UFTSocket_FileSize fileSize, void* lpParam);
-
-	public ref class UFTSocket
+	public ref class UFTSession
 	{
-		::UFTSocket* const lpSocket;
-		
-		explicit UFTSocket(::UFTSocket&& socket)
-			: lpSocket(
-				new ::UFTSocket(
-					std::move(socket)
-				)
-			)
-		{
-		}
+	internal:
+		::UFTSession* const lpSession;
 
 	public:
-		UFTSocket()
-			: lpSocket(
-				new ::UFTSocket()
+		UFTSession()
+			: lpSession(
+				new ::UFTSession()
 			)
 		{
 		}
 
-		virtual ~UFTSocket()
+		virtual ~UFTSession()
 		{
-			delete lpSocket;
-		}
-
-		bool IsOpen()
-		{
-			return lpSocket->IsOpen();
-		}
-
-		bool IsBlocking()
-		{
-			return lpSocket->IsBlocking();
+			delete lpSession;
 		}
 
 		bool IsConnected()
 		{
-			return lpSocket->IsConnected();
+			return lpSession->IsConnected();
+		}
+		
+		auto GetRemotePort()
+		{
+			return lpSession->GetRemotePort();
 		}
 
-		bool IsListening()
+		auto GetRemoteAddress()
 		{
-			return lpSocket->IsListening();
+			return lpSession->GetRemoteAddress();
 		}
 
-		auto GetTimeout()
+		bool SetTimeout(System::TimeSpan value)
 		{
-			return System::Int32(
-				lpSocket->GetTimeout()
-			);
-		}
-
-		bool Open()
-		{
-			return lpSocket->Open();
-		}
-
-		void Close()
-		{
-			lpSocket->Close();
-		}
-
-		bool SetBlocking(bool set)
-		{
-			return lpSocket->SetBlocking(
-				set
-			);
-		}
-
-		bool SetTimeout(System::TimeSpan^ delta)
-		{
-			return lpSocket->SetTimeout(
+			return lpSession->SetTimeout(
 				System::Convert::ToInt32(
-					delta->TotalMilliseconds
+					value.TotalMilliseconds
 				)
 			);
-		}
-
-		bool Listen(System::Net::IPEndPoint^ localEP, System::UInt32 backlog)
-		{
-			auto localAddressBytes = localEP->Address->GetAddressBytes();
-			System::Array::Reverse(localAddressBytes, 0, localAddressBytes->Length);
-
-			auto localAddress = System::BitConverter::ToUInt32(
-				localAddressBytes,
-				0
-			);
-
-			return lpSocket->Listen(
-				localAddress,
-				static_cast<uint16_t>(localEP->Port),
-				backlog
-			);
-		}
-
-		bool Accept(UFTSocket^% socket)
-		{
-			::UFTSocket _socket;
-
-			if (lpSocket->Accept(_socket))
-			{
-				socket = gcnew UFTSocket(
-					std::move(_socket)
-				);
-
-				return true;
-			}
-
-			return false;
-		}
-
-		bool Connect(System::Net::IPEndPoint^ remoteEP)
-		{
-			auto remoteAddressBytes = remoteEP->Address->GetAddressBytes();
-			System::Array::Reverse(remoteAddressBytes, 0, remoteAddressBytes->Length);
-
-			auto remoteAddress = System::BitConverter::ToUInt32(
-				remoteAddressBytes,
-				0
-			);
-
-			return lpSocket->Connect(
-				remoteAddress,
-				static_cast<uint16_t>(remoteEP->Port)
-			);
-		}
-
-		void Disconnect()
-		{
-			lpSocket->Disconnect();
 		}
 
 		// @return false on connection closed
 		bool Update()
 		{
-			return lpSocket->Update();
+			UFTSESSION_ERROR_CODES errorCode;
+
+			if ((errorCode = lpSession->Update()) != UFTSESSION_ERROR_CODE_SUCCESS)
+			{
+				if (!ThrowExceptionOrReturnFalseOnConnectionLost(errorCode))
+				{
+
+					return false;
+				}
+			}
+
+			return true;
 		}
 
 		// @return false on connection closed
-		bool GetFileList(System::String^ source, UFTSocket_OnGetFileList^ onGetFileList, System::Object^ param)
+		bool GetFileList([System::Runtime::InteropServices::OutAttribute] array<UFTSession_FileInfo^>^% files, System::String^ path)
 		{
-			auto _source = msclr::interop::marshal_as<std::string>(
-				source
+			auto _path = msclr::interop::marshal_as<std::string>(
+				path
 			);
 
-			System::Runtime::InteropServices::GCHandle hOnGetFileList(
-				System::Runtime::InteropServices::GCHandle::Alloc(onGetFileList)
+			::UFTSession_FileList _files;
+			UFTSESSION_ERROR_CODES errorCode;
+
+			if ((errorCode = lpSession->GetFileList(_files, _path.c_str())) != UFTSESSION_ERROR_CODE_SUCCESS)
+			{
+				if (!ThrowExceptionOrReturnFalseOnConnectionLost(errorCode))
+				{
+
+					return false;
+				}
+			}
+
+			files = gcnew array<UFTSession_FileInfo^>(
+				_files.size()
 			);
 
-			System::Runtime::InteropServices::GCHandle hParam(
-				System::Runtime::InteropServices::GCHandle::Alloc(param)
-			);
-			
-			DetourContext context;
-			context.lpDelegate = System::Runtime::InteropServices::GCHandle::ToIntPtr(hOnGetFileList).ToPointer();
-			context.lpParam = System::Runtime::InteropServices::GCHandle::ToIntPtr(hParam).ToPointer();
+			for (System::Int32 i = 0; i < files->Length; ++i)
+			{
+				auto lpFileInfo = files[i] = gcnew UFTSession_FileInfo();
+				lpFileInfo->Path = msclr::interop::marshal_as<System::String^>(
+					_files[i].Path
+				);
+				lpFileInfo->Size = _files[i].Size;
+				lpFileInfo->Timestamp = _files[i].Timestamp;
+			}
 
-			auto result = lpSocket->GetFileList(
-				_source.c_str(),
-				&Detour_OnGetFileList,
-				&context
-			);
-
-			hParam.Free();
-			hOnGetFileList.Free();
-
-			return result;
+			return true;
 		}
 
 		// @return false on connection closed
@@ -257,13 +177,21 @@ namespace UFT::DotNET
 				destination
 			);
 
-			return lpSocket->SendFile(
-				_source.c_str(),
-				_destination.c_str()
-			);
+			UFTSESSION_ERROR_CODES errorCode;
+
+			if ((errorCode = lpSession->SendFile(_source.c_str(), _destination.c_str())) != UFTSESSION_ERROR_CODE_SUCCESS)
+			{
+				if (!ThrowExceptionOrReturnFalseOnConnectionLost(errorCode))
+				{
+
+					return false;
+				}
+			}
+
+			return true;
 		}
 		// @return false on connection closed
-		bool SendFile(System::String^ source, System::String^ destination, UFTSocket_OnSendProgress^ onProgress, System::Object^ param)
+		bool SendFile(System::String^ source, System::String^ destination, UFTSession_OnSendProgress^ onProgress, System::Object^ param)
 		{
 			auto _source = msclr::interop::marshal_as<std::string>(
 				source
@@ -285,17 +213,21 @@ namespace UFT::DotNET
 			context.lpDelegate = System::Runtime::InteropServices::GCHandle::ToIntPtr(hOnProgress).ToPointer();
 			context.lpParam = System::Runtime::InteropServices::GCHandle::ToIntPtr(hParam).ToPointer();
 
-			auto result = lpSocket->SendFile(
-				_source.c_str(),
-				_destination.c_str(),
-				&Detour_OnProgress_Send,
-				&context
-			);
+			UFTSESSION_ERROR_CODES errorCode;
+
+			if ((errorCode = lpSession->SendFile(_source.c_str(), _destination.c_str(), &Detour_OnProgress_Send, &context)) != UFTSESSION_ERROR_CODE_SUCCESS)
+			{
+				if (!ThrowExceptionOrReturnFalseOnConnectionLost(errorCode))
+				{
+
+					return false;
+				}
+			}
 
 			hParam.Free();
 			hOnProgress.Free();
 
-			return result;
+			return true;
 		}
 
 		// @return false on connection closed
@@ -309,13 +241,21 @@ namespace UFT::DotNET
 				destination
 			);
 
-			return lpSocket->ReceiveFile(
-				_source.c_str(),
-				_destination.c_str()
-			);
+			UFTSESSION_ERROR_CODES errorCode;
+
+			if ((errorCode = lpSession->ReceiveFile(_source.c_str(), _destination.c_str())) != UFTSESSION_ERROR_CODE_SUCCESS)
+			{
+				if (!ThrowExceptionOrReturnFalseOnConnectionLost(errorCode))
+				{
+
+					return false;
+				}
+			}
+
+			return true;
 		}
 		// @return false on connection closed
-		bool ReceiveFile(System::String^ source, System::String^ destination, UFTSocket_OnReceiveProgress^ onProgress, System::Object^ param)
+		bool ReceiveFile(System::String^ source, System::String^ destination, UFTSession_OnReceiveProgress^ onProgress, System::Object^ param)
 		{
 			auto _source = msclr::interop::marshal_as<std::string>(
 				source
@@ -337,22 +277,180 @@ namespace UFT::DotNET
 			context.lpDelegate = System::Runtime::InteropServices::GCHandle::ToIntPtr(hOnProgress).ToPointer();
 			context.lpParam = System::Runtime::InteropServices::GCHandle::ToIntPtr(hParam).ToPointer();
 
-			auto result = lpSocket->ReceiveFile(
-				_source.c_str(),
-				_destination.c_str(),
-				&Detour_OnProgress_Receive,
-				&context
-			);
+			UFTSESSION_ERROR_CODES errorCode;
+
+			if ((errorCode = lpSession->ReceiveFile(_source.c_str(), _destination.c_str(), &Detour_OnProgress_Receive, &context)) != UFTSESSION_ERROR_CODE_SUCCESS)
+			{
+				if (!ThrowExceptionOrReturnFalseOnConnectionLost(errorCode))
+				{
+
+					return false;
+				}
+			}
 
 			hParam.Free();
 			hOnProgress.Free();
 
-			return result;
+			return true;
+		}
+
+		void Disconnect()
+		{
+			lpSession->Disconnect();
+		}
+
+	private:
+		static void ThrowExceptionForError(UFTSESSION_ERROR_CODES errorCode)
+		{
+			auto message = msclr::interop::marshal_as<System::String^>(
+				UFTSESSION_ERROR_CODES_ToString(errorCode)
+			);
+
+			throw gcnew System::Exception(
+				message
+			);
+		}
+
+		static bool ThrowExceptionOrReturnFalseOnConnectionLost(UFTSESSION_ERROR_CODES errorCode)
+		{
+			switch (errorCode)
+			{
+				case UFTSESSION_ERROR_CODE_NETWORK_API_ERROR:
+				case UFTSESSION_ERROR_CODE_NETWORK_NOT_CONNECTED:
+				case UFTSESSION_ERROR_CODE_NETWORK_CONNECTION_LOST:
+					return false;
+			}
+
+			ThrowExceptionForError(
+				errorCode
+			);
+
+			return true;
+		}
+	};
+
+	public ref class UFTClient
+		: public UFTSession
+	{
+	public:
+		UFTClient()
+		{
+		}
+
+		bool Connect(System::Net::IPEndPoint^ remoteEP)
+		{
+			bool wasOpen;
+
+			if (!(wasOpen = lpSession->GetSocket().IsOpen()) && !lpSession->GetSocket().Open())
+			{
+
+				return false;
+			}
+
+			auto remoteAddressBytes = remoteEP->Address->GetAddressBytes();
+			System::Array::Reverse(remoteAddressBytes, 0, remoteAddressBytes->Length);
+
+			auto remoteAddress = System::BitConverter::ToUInt32(
+				remoteAddressBytes,
+				0
+			);
+			
+			if (!lpSession->GetSocket().Connect(remoteAddress, static_cast<uint16_t>(remoteEP->Port)))
+			{
+				if (!wasOpen)
+				{
+
+					lpSession->GetSocket().Close();
+				}
+
+				return false;
+			}
+
+			if (!lpSession->GetSocket().SetBlocking(false))
+			{
+				lpSession->GetSocket().Disconnect();
+
+				if (!wasOpen)
+				{
+
+					lpSession->GetSocket().Close();
+				}
+
+				return false;
+			}
+
+			return true;
+		}
+	};
+
+	public ref class UFTListener
+	{
+		::UFTListener* const lpListener;
+
+	public:
+		UFTListener()
+			: lpListener(
+				new ::UFTListener()
+			)
+		{
+		}
+
+		virtual ~UFTListener()
+		{
+			delete lpListener;
+		}
+
+		bool IsListening()
+		{
+			return lpListener->IsListening();
+		}
+
+		bool Accept(UFTSession^% session)
+		{
+			if (session == nullptr)
+			{
+
+				session = gcnew UFTSession();
+			}
+
+			if (!lpListener->Accept(*session->lpSession))
+			{
+
+				return false;
+			}
+
+			return true;
+		}
+
+		bool Listen(System::Net::IPEndPoint^ localEP, System::UInt32 backlog)
+		{
+			auto localAddressBytes = localEP->Address->GetAddressBytes();
+			System::Array::Reverse(localAddressBytes, 0, localAddressBytes->Length);
+
+			auto localAddress = System::BitConverter::ToUInt32(
+				localAddressBytes,
+				0
+			);
+
+			return lpListener->Listen(
+				localAddress,
+				static_cast<uint16_t>(localEP->Port),
+				backlog
+			);
+		}
+
+		void Close()
+		{
+			if (lpListener->GetSocket().IsOpen())
+			{
+
+				lpListener->Close();
+			}
 		}
 	};
 }
 
-inline void UFT::DotNET::Detour_OnGetFileList(const ::UFTSocket_FileInfoList& files, void* lpParam)
+inline void UFT::DotNET::Detour_OnProgress_Send(std::uint64_t bytesTransferred, std::uint64_t fileSize, void* lpParam)
 {
 	auto lpContext = reinterpret_cast<DetourContext*>(
 		lpParam
@@ -366,45 +464,7 @@ inline void UFT::DotNET::Detour_OnGetFileList(const ::UFTSocket_FileInfoList& fi
 		System::IntPtr(lpContext->lpParam)
 	);
 
-	auto onGetFileList = static_cast<UFTSocket_OnGetFileList^>(
-		hDelegate.Target
-	);
-
-	auto _files = gcnew UFTSocket_FileInfoList();
-
-	for (auto& file : files)
-	{
-		UFTSocket_FileInfo fileInfo;
-		fileInfo.Name = msclr::interop::marshal_as<System::String^>(
-			file.Name
-		);
-		fileInfo.Size = file.Size;
-		fileInfo.Timestamp = file.Timestamp;
-
-		_files->Add(fileInfo);
-	}
-
-	onGetFileList(
-		_files,
-		hParam.Target
-	);
-}
-
-inline void UFT::DotNET::Detour_OnProgress_Send(::UFTSocket_FileSize bytesTransferred, ::UFTSocket_FileSize fileSize, void* lpParam)
-{
-	auto lpContext = reinterpret_cast<DetourContext*>(
-		lpParam
-	);
-
-	auto hDelegate = System::Runtime::InteropServices::GCHandle::FromIntPtr(
-		System::IntPtr(lpContext->lpDelegate)
-	);
-
-	auto hParam = System::Runtime::InteropServices::GCHandle::FromIntPtr(
-		System::IntPtr(lpContext->lpParam)
-	);
-
-	auto onProgress = static_cast<UFTSocket_OnSendProgress^>(
+	auto onProgress = static_cast<UFTSession_OnSendProgress^>(
 		hDelegate.Target
 	);
 
@@ -415,7 +475,7 @@ inline void UFT::DotNET::Detour_OnProgress_Send(::UFTSocket_FileSize bytesTransf
 	);
 }
 
-inline void UFT::DotNET::Detour_OnProgress_Receive(::UFTSocket_FileSize bytesTransferred, ::UFTSocket_FileSize fileSize, void* lpParam)
+inline void UFT::DotNET::Detour_OnProgress_Receive(std::uint64_t bytesTransferred, std::uint64_t fileSize, void* lpParam)
 {
 	auto lpContext = reinterpret_cast<DetourContext*>(
 		lpParam
@@ -429,7 +489,7 @@ inline void UFT::DotNET::Detour_OnProgress_Receive(::UFTSocket_FileSize bytesTra
 		System::IntPtr(lpContext->lpParam)
 	);
 
-	auto onProgress = static_cast<UFTSocket_OnReceiveProgress^>(
+	auto onProgress = static_cast<UFTSession_OnReceiveProgress^>(
 		hDelegate.Target
 	);
 
